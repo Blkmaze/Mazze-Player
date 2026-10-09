@@ -1,6 +1,7 @@
 package com.example.ui.screens.livetv
 
 import android.content.res.Configuration
+import android.view.KeyEvent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +19,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
@@ -37,12 +40,18 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -52,8 +61,11 @@ import coil.compose.AsyncImage
 import com.example.data.local.FavoriteChannelEntity
 import com.example.data.model.LiveCategory
 import com.example.data.model.LiveStream
+import com.example.ui.components.AlphabetJumpStrip
 import com.example.ui.components.CategoryItemData
 import com.example.ui.components.CategorySidePanel
+import com.example.ui.components.JumpBarControl
+import com.example.ui.components.fastTvKeyNavigation
 import com.example.ui.components.tvFocusable
 import com.example.ui.theme.MaZzeDarkBackground
 import com.example.ui.theme.MaZzePrimary
@@ -64,6 +76,7 @@ import com.example.ui.theme.MaZzeSurfaceElevated
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import kotlinx.coroutines.launch
 
 @Composable
 fun LiveTvScreen(
@@ -80,6 +93,14 @@ fun LiveTvScreen(
     modifier: Modifier = Modifier
 ) {
     val favoriteIds = favorites.map { it.streamId }.toSet()
+    val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
+
+    // Extract available starting letters for A-Z strip
+    val availableLetters = remember(streams) {
+        streams.mapNotNull { it.name.trim().firstOrNull()?.uppercaseChar() }.toSet()
+    }
 
     // Transform categories into side-panel items with counts
     val sideCategories = remember(categories, streams) {
@@ -113,15 +134,21 @@ fun LiveTvScreen(
 
         Spacer(modifier = Modifier.width(8.dp))
 
-        // 2. Right-hand area: Search bar & Channels List fitting within screen width
+        // 2. Right-hand area: Search bar, Channel Top/Bottom control, Channels List & A-Z quick jump strip
         Column(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight()
-                .padding(end = 4.dp)
+                .padding(end = 2.dp)
         ) {
-            // Search Bar
-            Box(modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp)) {
+            // Search Bar & Jump Bar Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = onSearchQueryChange,
@@ -147,14 +174,33 @@ fun LiveTvScreen(
                         unfocusedContainerColor = MaZzeSurfaceElevated
                     ),
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
+                        .weight(1f)
+                        .height(46.dp)
                         .tvFocusable(shape = RoundedCornerShape(10.dp))
                         .testTag("search_channels_input")
                 )
+
+                // Top & Bottom Jump buttons for channel list
+                JumpBarControl(
+                    onJumpToTop = {
+                        coroutineScope.launch {
+                            listState.animateScrollToItem(0)
+                        }
+                    },
+                    onJumpToBottom = {
+                        coroutineScope.launch {
+                            if (streams.isNotEmpty()) {
+                                listState.animateScrollToItem(streams.size - 1)
+                            }
+                        }
+                    },
+                    label = "${streams.size} Channels",
+                    modifier = Modifier.width(190.dp),
+                    tagPrefix = "channel"
+                )
             }
 
-            // Channels list / state
+            // Channels list / state + A-Z strip
             if (isLoading) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -196,21 +242,68 @@ fun LiveTvScreen(
                     }
                 }
             } else {
-                // Channel rows: fit cleanly within the right area width with Heart and Play buttons fully visible
-                LazyColumn(
-                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                Row(
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(streams, key = { it.streamIdInt }) { stream ->
-                        val isFav = favoriteIds.contains(stream.streamIdInt)
-                        ChannelRowItem(
-                            stream = stream,
-                            isFavorite = isFav,
-                            onPlay = { onPlayChannel(stream) },
-                            onToggleFavorite = { onToggleFavorite(stream, isFav) }
-                        )
+                    // Channel rows: fit cleanly within the right area width with Heart and Play buttons fully visible
+                    LazyColumn(
+                        state = listState,
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .fastTvKeyNavigation(
+                                lazyListState = listState,
+                                itemCount = streams.size,
+                                jumpStep = 10,
+                                coroutineScope = coroutineScope
+                            )
+                            .testTag("channels_list")
+                    ) {
+                        itemsIndexed(streams, key = { _, it -> it.streamIdInt }) { index, stream ->
+                            val isFav = favoriteIds.contains(stream.streamIdInt)
+                            val isFirst = index == 0
+                            val isLast = index == streams.size - 1
+
+                            ChannelRowItem(
+                                stream = stream,
+                                isFavorite = isFav,
+                                onPlay = { onPlayChannel(stream) },
+                                onToggleFavorite = { onToggleFavorite(stream, isFav) },
+                                onNavigateLeft = if (isFirst) {
+                                    { focusManager.moveFocus(FocusDirection.Left) }
+                                } else null,
+                                onNavigateDown = if (isLast) {
+                                    { focusManager.moveFocus(FocusDirection.Down) }
+                                } else null
+                            )
+                        }
                     }
+
+                    // Quick-jump A-Z/0-9 letter strip on the right edge
+                    AlphabetJumpStrip(
+                        availableLetters = availableLetters,
+                        onLetterSelected = { char ->
+                            coroutineScope.launch {
+                                val targetIndex = if (char == '#') {
+                                    streams.indexOfFirst {
+                                        val firstChar = it.name.trim().firstOrNull()
+                                        firstChar != null && (firstChar.isDigit() || !firstChar.isLetter())
+                                    }
+                                } else {
+                                    streams.indexOfFirst {
+                                        it.name.trim().startsWith(char, ignoreCase = true)
+                                    }
+                                }
+                                if (targetIndex >= 0) {
+                                    listState.animateScrollToItem(targetIndex)
+                                }
+                            }
+                        },
+                        modifier = Modifier.padding(start = 4.dp, end = 2.dp),
+                        tagPrefix = "channel_alpha"
+                    )
                 }
             }
         }
@@ -222,13 +315,28 @@ fun ChannelRowItem(
     stream: LiveStream,
     isFavorite: Boolean,
     onPlay: () -> Unit,
-    onToggleFavorite: () -> Unit
+    onToggleFavorite: () -> Unit,
+    onNavigateLeft: (() -> Unit)? = null,
+    onNavigateDown: (() -> Unit)? = null
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
             .tvFocusable(shape = RoundedCornerShape(10.dp))
+            .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown) {
+                    if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT && onNavigateLeft != null) {
+                        onNavigateLeft()
+                        return@onPreviewKeyEvent true
+                    }
+                    if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_DOWN && onNavigateDown != null) {
+                        onNavigateDown()
+                        return@onPreviewKeyEvent true
+                    }
+                }
+                false
+            }
             .clickable { onPlay() }
             .testTag("channel_item_${stream.streamIdInt}"),
         colors = CardDefaults.cardColors(containerColor = MaZzeSurfaceDark),

@@ -1,5 +1,6 @@
 package com.example.ui.screens.series
 
+import android.view.KeyEvent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -14,9 +15,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
@@ -35,11 +38,17 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -47,8 +56,11 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.model.SeriesCategory
 import com.example.data.model.SeriesItem
+import com.example.ui.components.AlphabetJumpStrip
 import com.example.ui.components.CategoryItemData
 import com.example.ui.components.CategorySidePanel
+import com.example.ui.components.JumpBarControl
+import com.example.ui.components.fastTvKeyNavigation
 import com.example.ui.components.tvFocusable
 import com.example.ui.theme.MaZzeAccentAmber
 import com.example.ui.theme.MaZzeDarkBackground
@@ -60,6 +72,7 @@ import com.example.ui.theme.MaZzeSurfaceElevated
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import kotlinx.coroutines.launch
 
 @Composable
 fun SeriesScreen(
@@ -73,6 +86,15 @@ fun SeriesScreen(
     onOpenSeries: (SeriesItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val gridState = rememberLazyGridState()
+    val coroutineScope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
+
+    // Extract available starting letters for A-Z strip
+    val availableLetters = remember(seriesList) {
+        seriesList.mapNotNull { it.name.trim().firstOrNull()?.uppercaseChar() }.toSet()
+    }
+
     val sideCategories = remember(categories, seriesList) {
         val totalCount = seriesList.size
         categories.map { cat ->
@@ -101,12 +123,22 @@ fun SeriesScreen(
             title = "Series"
         )
 
+        Spacer(modifier = Modifier.width(8.dp))
+
         Column(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight()
+                .padding(end = 2.dp)
         ) {
-            Box(modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp)) {
+            // Search Bar & Jump Bar Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = onSearchQueryChange,
@@ -132,10 +164,29 @@ fun SeriesScreen(
                         unfocusedContainerColor = MaZzeSurfaceElevated
                     ),
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .weight(1f)
                         .height(46.dp)
                         .tvFocusable(shape = RoundedCornerShape(10.dp), focusedScale = 1.01f)
                         .testTag("search_series_input")
+                )
+
+                // Top & Bottom Jump buttons for series poster grid
+                JumpBarControl(
+                    onJumpToTop = {
+                        coroutineScope.launch {
+                            gridState.animateScrollToItem(0)
+                        }
+                    },
+                    onJumpToBottom = {
+                        coroutineScope.launch {
+                            if (seriesList.isNotEmpty()) {
+                                gridState.animateScrollToItem(seriesList.size - 1)
+                            }
+                        }
+                    },
+                    label = "${seriesList.size} Series",
+                    modifier = Modifier.width(190.dp),
+                    tagPrefix = "series"
                 )
             }
 
@@ -180,19 +231,66 @@ fun SeriesScreen(
                     }
                 }
             } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 125.dp),
-                    contentPadding = PaddingValues(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                Row(
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(seriesList, key = { it.seriesIdInt }) { series ->
-                        SeriesGridCard(
-                            series = series,
-                            onClick = { onOpenSeries(series) }
-                        )
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(minSize = 125.dp),
+                        state = gridState,
+                        contentPadding = PaddingValues(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .fastTvKeyNavigation(
+                                lazyGridState = gridState,
+                                itemCount = seriesList.size,
+                                jumpStep = 10,
+                                coroutineScope = coroutineScope
+                            )
+                            .testTag("series_grid")
+                    ) {
+                        itemsIndexed(seriesList, key = { _, it -> it.seriesIdInt }) { index, series ->
+                            val isFirst = index == 0
+                            val isLast = index == seriesList.size - 1
+
+                            SeriesGridCard(
+                                series = series,
+                                onClick = { onOpenSeries(series) },
+                                onNavigateLeft = if (isFirst) {
+                                    { focusManager.moveFocus(FocusDirection.Left) }
+                                } else null,
+                                onNavigateDown = if (isLast) {
+                                    { focusManager.moveFocus(FocusDirection.Down) }
+                                } else null
+                            )
+                        }
                     }
+
+                    // Quick-jump A-Z/0-9 letter strip on the right edge
+                    AlphabetJumpStrip(
+                        availableLetters = availableLetters,
+                        onLetterSelected = { char ->
+                            coroutineScope.launch {
+                                val targetIndex = if (char == '#') {
+                                    seriesList.indexOfFirst {
+                                        val firstChar = it.name.trim().firstOrNull()
+                                        firstChar != null && (firstChar.isDigit() || !firstChar.isLetter())
+                                    }
+                                } else {
+                                    seriesList.indexOfFirst {
+                                        it.name.trim().startsWith(char, ignoreCase = true)
+                                    }
+                                }
+                                if (targetIndex >= 0) {
+                                    gridState.animateScrollToItem(targetIndex)
+                                }
+                            }
+                        },
+                        modifier = Modifier.padding(start = 4.dp, end = 2.dp),
+                        tagPrefix = "series_alpha"
+                    )
                 }
             }
         }
@@ -202,13 +300,28 @@ fun SeriesScreen(
 @Composable
 fun SeriesGridCard(
     series: SeriesItem,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onNavigateLeft: (() -> Unit)? = null,
+    onNavigateDown: (() -> Unit)? = null
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
             .tvFocusable(shape = RoundedCornerShape(8.dp))
+            .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown) {
+                    if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT && onNavigateLeft != null) {
+                        onNavigateLeft()
+                        return@onPreviewKeyEvent true
+                    }
+                    if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_DOWN && onNavigateDown != null) {
+                        onNavigateDown()
+                        return@onPreviewKeyEvent true
+                    }
+                }
+                false
+            }
             .clickable { onClick() }
             .testTag("series_item_${series.seriesIdInt}"),
         colors = CardDefaults.cardColors(containerColor = MaZzeSurfaceDark),

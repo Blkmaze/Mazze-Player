@@ -1,6 +1,7 @@
 package com.example.ui.components
 
 import android.content.res.Configuration
+import android.view.KeyEvent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,16 +18,24 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -40,6 +49,7 @@ import com.example.ui.theme.MaZzeSurfaceElevated
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import kotlinx.coroutines.launch
 
 data class CategoryItemData(
     val id: String,
@@ -57,7 +67,10 @@ fun CategorySidePanel(
 ) {
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-    val panelWidth = if (isLandscape) 160.dp else 125.dp
+    val panelWidth = if (isLandscape) 175.dp else 135.dp
+    val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
 
     Surface(
         color = MaZzeSurfaceDark,
@@ -74,7 +87,7 @@ fun CategorySidePanel(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(MaZzeSurfaceElevated)
-                    .padding(horizontal = 12.dp, vertical = 12.dp)
+                    .padding(horizontal = 10.dp, vertical = 10.dp)
             ) {
                 Text(
                     text = title.uppercase(),
@@ -85,21 +98,52 @@ fun CategorySidePanel(
                 )
             }
 
-            // Scrollable Category List with TV D-pad focusability
+            // Top and Bottom Jump Buttons at the start of the category panel
+            JumpBarControl(
+                onJumpToTop = {
+                    coroutineScope.launch {
+                        listState.animateScrollToItem(0)
+                    }
+                },
+                onJumpToBottom = {
+                    coroutineScope.launch {
+                        if (categories.isNotEmpty()) {
+                            listState.animateScrollToItem(categories.size - 1)
+                        }
+                    }
+                },
+                label = "${categories.size} Cats",
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+                tagPrefix = "cat"
+            )
+
+            // Scrollable Category List with TV D-pad focusability and fast remote navigation
             LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
+                    .fastTvKeyNavigation(
+                        lazyListState = listState,
+                        itemCount = categories.size,
+                        jumpStep = 10,
+                        coroutineScope = coroutineScope
+                    )
                     .testTag("category_side_panel_list"),
-                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                items(categories, key = { it.id }) { cat ->
+                itemsIndexed(categories, key = { _, it -> it.id }) { index, cat ->
                     val isSelected = cat.id == selectedCategoryId
+                    val isLastItem = index == categories.size - 1
+
                     CategoryPanelRow(
                         item = cat,
                         isSelected = isSelected,
-                        onClick = { onSelectCategory(cat.id) }
+                        onClick = { onSelectCategory(cat.id) },
+                        onNavigateDown = if (isLastItem) {
+                            { focusManager.moveFocus(FocusDirection.Down) }
+                        } else null
                     )
                 }
             }
@@ -111,7 +155,8 @@ fun CategorySidePanel(
 private fun CategoryPanelRow(
     item: CategoryItemData,
     isSelected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onNavigateDown: (() -> Unit)? = null
 ) {
     val backgroundColor = if (isSelected) MaZzePrimary.copy(alpha = 0.35f) else Color.Transparent
     val textColor = if (isSelected) Color.White else TextSecondary
@@ -122,8 +167,17 @@ private fun CategoryPanelRow(
             .clip(RoundedCornerShape(8.dp))
             .background(backgroundColor)
             .tvFocusable(shape = RoundedCornerShape(8.dp))
+            .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown && event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+                    if (onNavigateDown != null) {
+                        onNavigateDown()
+                        return@onPreviewKeyEvent true
+                    }
+                }
+                false
+            }
             .clickable { onClick() }
-            .padding(horizontal = 10.dp, vertical = 10.dp)
+            .padding(horizontal = 10.dp, vertical = 9.dp)
             .testTag("side_category_${item.id}"),
         verticalAlignment = Alignment.CenterVertically
     ) {

@@ -1,5 +1,6 @@
 package com.example.ui.screens.vod
 
+import android.view.KeyEvent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -14,9 +15,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
@@ -33,11 +36,17 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -45,8 +54,11 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.model.VodCategory
 import com.example.data.model.VodStream
+import com.example.ui.components.AlphabetJumpStrip
 import com.example.ui.components.CategoryItemData
 import com.example.ui.components.CategorySidePanel
+import com.example.ui.components.JumpBarControl
+import com.example.ui.components.fastTvKeyNavigation
 import com.example.ui.components.tvFocusable
 import com.example.ui.theme.MaZzeAccentAmber
 import com.example.ui.theme.MaZzeDarkBackground
@@ -58,6 +70,7 @@ import com.example.ui.theme.MaZzeSurfaceElevated
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import kotlinx.coroutines.launch
 
 @Composable
 fun VodScreen(
@@ -70,6 +83,15 @@ fun VodScreen(
     onPlayMovie: (VodStream) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val gridState = rememberLazyGridState()
+    val coroutineScope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
+
+    // Extract available starting letters for A-Z strip
+    val availableLetters = remember(streams) {
+        streams.mapNotNull { it.name.trim().firstOrNull()?.uppercaseChar() }.toSet()
+    }
+
     val sideCategories = remember(categories, streams) {
         val totalCount = streams.size
         categories.map { cat ->
@@ -98,12 +120,22 @@ fun VodScreen(
             title = "Movies"
         )
 
+        Spacer(modifier = Modifier.width(8.dp))
+
         Column(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight()
+                .padding(end = 2.dp)
         ) {
-            Box(modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp)) {
+            // Search Bar & Jump Bar Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = onSearchQueryChange,
@@ -129,10 +161,29 @@ fun VodScreen(
                         unfocusedContainerColor = MaZzeSurfaceElevated
                     ),
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .weight(1f)
                         .height(46.dp)
                         .tvFocusable(shape = RoundedCornerShape(10.dp), focusedScale = 1.01f)
                         .testTag("search_vod_input")
+                )
+
+                // Top & Bottom Jump buttons for movies poster grid
+                JumpBarControl(
+                    onJumpToTop = {
+                        coroutineScope.launch {
+                            gridState.animateScrollToItem(0)
+                        }
+                    },
+                    onJumpToBottom = {
+                        coroutineScope.launch {
+                            if (streams.isNotEmpty()) {
+                                gridState.animateScrollToItem(streams.size - 1)
+                            }
+                        }
+                    },
+                    label = "${streams.size} Movies",
+                    modifier = Modifier.width(190.dp),
+                    tagPrefix = "vod"
                 )
             }
 
@@ -166,19 +217,66 @@ fun VodScreen(
                     }
                 }
             } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 125.dp),
-                    contentPadding = PaddingValues(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                Row(
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(streams, key = { it.streamIdInt }) { movie ->
-                        MovieGridCard(
-                            movie = movie,
-                            onClick = { onPlayMovie(movie) }
-                        )
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(minSize = 125.dp),
+                        state = gridState,
+                        contentPadding = PaddingValues(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .fastTvKeyNavigation(
+                                lazyGridState = gridState,
+                                itemCount = streams.size,
+                                jumpStep = 10,
+                                coroutineScope = coroutineScope
+                            )
+                            .testTag("vod_grid")
+                    ) {
+                        itemsIndexed(streams, key = { _, it -> it.streamIdInt }) { index, movie ->
+                            val isFirst = index == 0
+                            val isLast = index == streams.size - 1
+
+                            MovieGridCard(
+                                movie = movie,
+                                onClick = { onPlayMovie(movie) },
+                                onNavigateLeft = if (isFirst) {
+                                    { focusManager.moveFocus(FocusDirection.Left) }
+                                } else null,
+                                onNavigateDown = if (isLast) {
+                                    { focusManager.moveFocus(FocusDirection.Down) }
+                                } else null
+                            )
+                        }
                     }
+
+                    // Quick-jump A-Z/0-9 letter strip on the right edge
+                    AlphabetJumpStrip(
+                        availableLetters = availableLetters,
+                        onLetterSelected = { char ->
+                            coroutineScope.launch {
+                                val targetIndex = if (char == '#') {
+                                    streams.indexOfFirst {
+                                        val firstChar = it.name.trim().firstOrNull()
+                                        firstChar != null && (firstChar.isDigit() || !firstChar.isLetter())
+                                    }
+                                } else {
+                                    streams.indexOfFirst {
+                                        it.name.trim().startsWith(char, ignoreCase = true)
+                                    }
+                                }
+                                if (targetIndex >= 0) {
+                                    gridState.animateScrollToItem(targetIndex)
+                                }
+                            }
+                        },
+                        modifier = Modifier.padding(start = 4.dp, end = 2.dp),
+                        tagPrefix = "vod_alpha"
+                    )
                 }
             }
         }
@@ -188,13 +286,28 @@ fun VodScreen(
 @Composable
 fun MovieGridCard(
     movie: VodStream,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onNavigateLeft: (() -> Unit)? = null,
+    onNavigateDown: (() -> Unit)? = null
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
             .tvFocusable(shape = RoundedCornerShape(8.dp))
+            .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown) {
+                    if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT && onNavigateLeft != null) {
+                        onNavigateLeft()
+                        return@onPreviewKeyEvent true
+                    }
+                    if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_DOWN && onNavigateDown != null) {
+                        onNavigateDown()
+                        return@onPreviewKeyEvent true
+                    }
+                }
+                false
+            }
             .clickable { onClick() }
             .testTag("movie_item_${movie.streamIdInt}"),
         colors = CardDefaults.cardColors(containerColor = MaZzeSurfaceDark),
