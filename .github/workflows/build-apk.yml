@@ -1,0 +1,53 @@
+name: Build MaZze APK
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: current
+      - name: Add Gradle project files that AI Studio keeps hidden
+        run: |
+          [ -f settings.gradle.kts ] || cat > settings.gradle.kts <<'EOF'
+          pluginManagement {
+              repositories { google(); mavenCentral(); gradlePluginPortal() }
+          }
+          dependencyResolutionManagement {
+              repositories { google(); mavenCentral() }
+          }
+          rootProject.name = "MaZze"
+          include(":app")
+          EOF
+          [ -f build.gradle.kts ] || cat > build.gradle.kts <<'EOF'
+          plugins {
+              alias(libs.plugins.android.application) apply false
+              alias(libs.plugins.kotlin.compose) apply false
+              alias(libs.plugins.google.devtools.ksp) apply false
+              alias(libs.plugins.secrets) apply false
+              alias(libs.plugins.google.services) apply false
+          }
+          EOF
+          [ -f gradle.properties ] || printf "org.gradle.jvmargs=-Xmx4g\nandroid.useAndroidX=true\nandroid.nonTransitiveRClass=true\nkotlin.code.style=official\n" > gradle.properties
+          [ -f .env.example ] || touch .env.example
+          [ -f debug.keystore ] || keytool -genkeypair -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+      - name: Build debug APK
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
+      - name: Publish APK to release MaZze-latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk MaZze.apk
+          gh release delete MaZze-latest --yes --cleanup-tag || true
+          gh release create MaZze-latest MaZze.apk --title "MaZze Player (latest build)" --notes "Automated build ${{ github.run_number }}"
