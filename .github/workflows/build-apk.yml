@@ -18,6 +18,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: current
+      - {name: Restore signing key from secret, env: {KS: "${{ secrets.DEBUG_KEYSTORE_B64 }}"}, run: "[ -z \"$KS\" ] || echo \"$KS\" | base64 -d > debug.keystore"}
       - name: Add Gradle project files that AI Studio keeps hidden
         run: |
           [ -f settings.gradle.kts ] || cat > settings.gradle.kts <<'EOF'
