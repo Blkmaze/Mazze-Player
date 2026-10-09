@@ -45,6 +45,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -119,6 +121,49 @@ fun LiveTvScreen(
         }
     }
 
+    val selectedCategoryFocusRequester = remember { FocusRequester() }
+    val categoryListState = rememberLazyListState()
+    val firstVisibleChannelFocusRequester = remember { FocusRequester() }
+
+    val selectedCategoryIndex = remember(sideCategories, selectedCategoryId) {
+        sideCategories.indexOfFirst { it.id == selectedCategoryId }.coerceAtLeast(0)
+    }
+
+    val navigateToSelectedCategory: () -> Unit = {
+        coroutineScope.launch {
+            if (sideCategories.isNotEmpty() && selectedCategoryIndex in sideCategories.indices) {
+                try {
+                    categoryListState.scrollToItem(selectedCategoryIndex)
+                } catch (_: Exception) {}
+            }
+            try {
+                selectedCategoryFocusRequester.requestFocus()
+            } catch (_: Exception) {
+                kotlinx.coroutines.delay(16)
+                try {
+                    selectedCategoryFocusRequester.requestFocus()
+                } catch (_: Exception) {
+                    focusManager.moveFocus(FocusDirection.Left)
+                }
+            }
+        }
+    }
+
+    val navigateToFirstVisibleChannel: () -> Unit = {
+        coroutineScope.launch {
+            try {
+                firstVisibleChannelFocusRequester.requestFocus()
+            } catch (_: Exception) {
+                kotlinx.coroutines.delay(16)
+                try {
+                    firstVisibleChannelFocusRequester.requestFocus()
+                } catch (_: Exception) {
+                    focusManager.moveFocus(FocusDirection.Right)
+                }
+            }
+        }
+    }
+
     Row(
         modifier = modifier
             .fillMaxSize()
@@ -129,7 +174,10 @@ fun LiveTvScreen(
             categories = sideCategories,
             selectedCategoryId = selectedCategoryId,
             onSelectCategory = onSelectCategory,
-            title = "Channels"
+            title = "Channels",
+            selectedCategoryFocusRequester = selectedCategoryFocusRequester,
+            onNavigateRight = navigateToFirstVisibleChannel,
+            listState = categoryListState
         )
 
         Spacer(modifier = Modifier.width(8.dp))
@@ -177,6 +225,19 @@ fun LiveTvScreen(
                         .weight(1f)
                         .height(46.dp)
                         .tvFocusable(shape = RoundedCornerShape(10.dp))
+                        .onPreviewKeyEvent { event ->
+                            if (event.type == KeyEventType.KeyDown) {
+                                if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                                    navigateToSelectedCategory()
+                                    return@onPreviewKeyEvent true
+                                }
+                                if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+                                    navigateToFirstVisibleChannel()
+                                    return@onPreviewKeyEvent true
+                                }
+                            }
+                            false
+                        }
                         .testTag("search_channels_input")
                 )
 
@@ -196,7 +257,11 @@ fun LiveTvScreen(
                     },
                     label = "${streams.size} Channels",
                     modifier = Modifier.width(190.dp),
-                    tagPrefix = "channel"
+                    tagPrefix = "channel",
+                    onNavigateLeft = {
+                        focusManager.moveFocus(FocusDirection.Left)
+                    },
+                    onNavigateDown = navigateToFirstVisibleChannel
                 )
             }
 
@@ -246,6 +311,7 @@ fun LiveTvScreen(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     // Channel rows: fit cleanly within the right area width with Heart and Play buttons fully visible
+                    val firstVisibleIndex = listState.firstVisibleItemIndex
                     LazyColumn(
                         state = listState,
                         contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
@@ -263,7 +329,7 @@ fun LiveTvScreen(
                     ) {
                         itemsIndexed(streams, key = { _, it -> it.streamIdInt }) { index, stream ->
                             val isFav = favoriteIds.contains(stream.streamIdInt)
-                            val isFirst = index == 0
+                            val isFirstVisible = index == firstVisibleIndex || (firstVisibleIndex !in streams.indices && index == 0)
                             val isLast = index == streams.size - 1
 
                             ChannelRowItem(
@@ -271,9 +337,8 @@ fun LiveTvScreen(
                                 isFavorite = isFav,
                                 onPlay = { onPlayChannel(stream) },
                                 onToggleFavorite = { onToggleFavorite(stream, isFav) },
-                                onNavigateLeft = if (isFirst) {
-                                    { focusManager.moveFocus(FocusDirection.Left) }
-                                } else null,
+                                focusRequester = if (isFirstVisible) firstVisibleChannelFocusRequester else null,
+                                onNavigateLeft = navigateToSelectedCategory,
                                 onNavigateDown = if (isLast) {
                                     { focusManager.moveFocus(FocusDirection.Down) }
                                 } else null
@@ -316,29 +381,38 @@ fun ChannelRowItem(
     isFavorite: Boolean,
     onPlay: () -> Unit,
     onToggleFavorite: () -> Unit,
+    focusRequester: FocusRequester? = null,
     onNavigateLeft: (() -> Unit)? = null,
     onNavigateDown: (() -> Unit)? = null
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .tvFocusable(shape = RoundedCornerShape(10.dp))
-            .onPreviewKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown) {
-                    if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT && onNavigateLeft != null) {
-                        onNavigateLeft()
-                        return@onPreviewKeyEvent true
-                    }
-                    if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_DOWN && onNavigateDown != null) {
-                        onNavigateDown()
-                        return@onPreviewKeyEvent true
-                    }
+    var cardModifier = Modifier
+        .fillMaxWidth()
+        .clip(RoundedCornerShape(10.dp))
+        .tvFocusable(shape = RoundedCornerShape(10.dp))
+
+    if (focusRequester != null) {
+        cardModifier = cardModifier.focusRequester(focusRequester)
+    }
+
+    cardModifier = cardModifier
+        .onPreviewKeyEvent { event ->
+            if (event.type == KeyEventType.KeyDown) {
+                if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT && onNavigateLeft != null) {
+                    onNavigateLeft()
+                    return@onPreviewKeyEvent true
                 }
-                false
+                if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_DOWN && onNavigateDown != null) {
+                    onNavigateDown()
+                    return@onPreviewKeyEvent true
+                }
             }
-            .clickable { onPlay() }
-            .testTag("channel_item_${stream.streamIdInt}"),
+            false
+        }
+        .clickable { onPlay() }
+        .testTag("channel_item_${stream.streamIdInt}")
+
+    Card(
+        modifier = cardModifier,
         colors = CardDefaults.cardColors(containerColor = MaZzeSurfaceDark),
         shape = RoundedCornerShape(10.dp)
     ) {

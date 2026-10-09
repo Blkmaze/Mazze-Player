@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
@@ -37,17 +38,24 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -111,6 +119,49 @@ fun SeriesScreen(
         }
     }
 
+    val selectedCategoryFocusRequester = remember { FocusRequester() }
+    val categoryListState = rememberLazyListState()
+    val firstVisibleSeriesFocusRequester = remember { FocusRequester() }
+
+    val selectedCategoryIndex = remember(sideCategories, selectedCategoryId) {
+        sideCategories.indexOfFirst { it.id == selectedCategoryId }.coerceAtLeast(0)
+    }
+
+    val navigateToSelectedCategory: () -> Unit = {
+        coroutineScope.launch {
+            if (sideCategories.isNotEmpty() && selectedCategoryIndex in sideCategories.indices) {
+                try {
+                    categoryListState.scrollToItem(selectedCategoryIndex)
+                } catch (_: Exception) {}
+            }
+            try {
+                selectedCategoryFocusRequester.requestFocus()
+            } catch (_: Exception) {
+                kotlinx.coroutines.delay(16)
+                try {
+                    selectedCategoryFocusRequester.requestFocus()
+                } catch (_: Exception) {
+                    focusManager.moveFocus(FocusDirection.Left)
+                }
+            }
+        }
+    }
+
+    val navigateToFirstVisibleSeries: () -> Unit = {
+        coroutineScope.launch {
+            try {
+                firstVisibleSeriesFocusRequester.requestFocus()
+            } catch (_: Exception) {
+                kotlinx.coroutines.delay(16)
+                try {
+                    firstVisibleSeriesFocusRequester.requestFocus()
+                } catch (_: Exception) {
+                    focusManager.moveFocus(FocusDirection.Right)
+                }
+            }
+        }
+    }
+
     Row(
         modifier = modifier
             .fillMaxSize()
@@ -120,7 +171,10 @@ fun SeriesScreen(
             categories = sideCategories,
             selectedCategoryId = selectedCategoryId,
             onSelectCategory = onSelectCategory,
-            title = "Series"
+            title = "Series",
+            selectedCategoryFocusRequester = selectedCategoryFocusRequester,
+            onNavigateRight = navigateToFirstVisibleSeries,
+            listState = categoryListState
         )
 
         Spacer(modifier = Modifier.width(8.dp))
@@ -167,6 +221,19 @@ fun SeriesScreen(
                         .weight(1f)
                         .height(46.dp)
                         .tvFocusable(shape = RoundedCornerShape(10.dp), focusedScale = 1.01f)
+                        .onPreviewKeyEvent { event ->
+                            if (event.type == KeyEventType.KeyDown) {
+                                if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                                    navigateToSelectedCategory()
+                                    return@onPreviewKeyEvent true
+                                }
+                                if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+                                    navigateToFirstVisibleSeries()
+                                    return@onPreviewKeyEvent true
+                                }
+                            }
+                            false
+                        }
                         .testTag("search_series_input")
                 )
 
@@ -186,7 +253,11 @@ fun SeriesScreen(
                     },
                     label = "${seriesList.size} Series",
                     modifier = Modifier.width(190.dp),
-                    tagPrefix = "series"
+                    tagPrefix = "series",
+                    onNavigateLeft = {
+                        focusManager.moveFocus(FocusDirection.Left)
+                    },
+                    onNavigateDown = navigateToFirstVisibleSeries
                 )
             }
 
@@ -234,6 +305,7 @@ fun SeriesScreen(
                 Row(
                     modifier = Modifier.fillMaxSize()
                 ) {
+                    val firstVisibleIndex = gridState.firstVisibleItemIndex
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(minSize = 125.dp),
                         state = gridState,
@@ -252,15 +324,14 @@ fun SeriesScreen(
                             .testTag("series_grid")
                     ) {
                         itemsIndexed(seriesList, key = { _, it -> it.seriesIdInt }) { index, series ->
-                            val isFirst = index == 0
+                            val isFirstVisible = index == firstVisibleIndex || (firstVisibleIndex !in seriesList.indices && index == 0)
                             val isLast = index == seriesList.size - 1
 
                             SeriesGridCard(
                                 series = series,
                                 onClick = { onOpenSeries(series) },
-                                onNavigateLeft = if (isFirst) {
-                                    { focusManager.moveFocus(FocusDirection.Left) }
-                                } else null,
+                                focusRequester = if (isFirstVisible) firstVisibleSeriesFocusRequester else null,
+                                onNavigateLeft = navigateToSelectedCategory,
                                 onNavigateDown = if (isLast) {
                                     { focusManager.moveFocus(FocusDirection.Down) }
                                 } else null
@@ -301,29 +372,54 @@ fun SeriesScreen(
 fun SeriesGridCard(
     series: SeriesItem,
     onClick: () -> Unit,
+    focusRequester: FocusRequester? = null,
     onNavigateLeft: (() -> Unit)? = null,
     onNavigateDown: (() -> Unit)? = null
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .tvFocusable(shape = RoundedCornerShape(8.dp))
-            .onPreviewKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown) {
-                    if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT && onNavigateLeft != null) {
+    val focusManager = LocalFocusManager.current
+    var isLeftEdge by remember { mutableStateOf(false) }
+
+    var cardModifier = Modifier
+        .fillMaxWidth()
+        .clip(RoundedCornerShape(8.dp))
+        .onGloballyPositioned { coordinates ->
+            val x = coordinates.positionInParent().x
+            isLeftEdge = x < 50f
+        }
+        .tvFocusable(shape = RoundedCornerShape(8.dp))
+
+    if (focusRequester != null) {
+        cardModifier = cardModifier.focusRequester(focusRequester)
+    }
+
+    cardModifier = cardModifier
+        .onPreviewKeyEvent { event ->
+            if (event.type == KeyEventType.KeyDown) {
+                if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                    if (isLeftEdge && onNavigateLeft != null) {
                         onNavigateLeft()
                         return@onPreviewKeyEvent true
-                    }
-                    if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_DOWN && onNavigateDown != null) {
-                        onNavigateDown()
-                        return@onPreviewKeyEvent true
+                    } else {
+                        val moved = focusManager.moveFocus(FocusDirection.Left)
+                        if (!moved && onNavigateLeft != null) {
+                            onNavigateLeft()
+                            return@onPreviewKeyEvent true
+                        }
+                        if (moved) return@onPreviewKeyEvent true
                     }
                 }
-                false
+                if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_DOWN && onNavigateDown != null) {
+                    onNavigateDown()
+                    return@onPreviewKeyEvent true
+                }
             }
-            .clickable { onClick() }
-            .testTag("series_item_${series.seriesIdInt}"),
+            false
+        }
+        .clickable { onClick() }
+        .testTag("series_item_${series.seriesIdInt}")
+
+    Card(
+        modifier = cardModifier,
         colors = CardDefaults.cardColors(containerColor = MaZzeSurfaceDark),
         shape = RoundedCornerShape(8.dp)
     ) {

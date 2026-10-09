@@ -75,6 +75,7 @@ import kotlinx.coroutines.launch
 /**
  * Jump navigation bar with Top and Bottom buttons.
  * Used at the top of category side panel and list columns.
+ * Only triggers jump when explicitly selected and pressed with OK/Enter, never on DPAD LEFT/RIGHT.
  */
 @Composable
 fun JumpBarControl(
@@ -82,7 +83,10 @@ fun JumpBarControl(
     onJumpToBottom: () -> Unit,
     label: String = "Jump",
     modifier: Modifier = Modifier,
-    tagPrefix: String = "jump"
+    tagPrefix: String = "jump",
+    onNavigateLeft: (() -> Unit)? = null,
+    onNavigateRight: (() -> Unit)? = null,
+    onNavigateDown: (() -> Unit)? = null
 ) {
     Row(
         modifier = modifier
@@ -93,12 +97,26 @@ fun JumpBarControl(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Jump to Top button
+        // Jump to Top button: only triggers jump on OK/Enter/Click, never on DPAD LEFT/RIGHT
         Row(
             modifier = Modifier
                 .clip(RoundedCornerShape(6.dp))
                 .background(MaZzeSurfaceDark)
                 .tvFocusable(shape = RoundedCornerShape(6.dp), borderWidth = 2.dp)
+                .onPreviewKeyEvent { event ->
+                    if (event.type == KeyEventType.KeyDown) {
+                        val keyCode = event.nativeKeyEvent.keyCode
+                        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT && onNavigateLeft != null) {
+                            onNavigateLeft()
+                            return@onPreviewKeyEvent true
+                        }
+                        if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN && onNavigateDown != null) {
+                            onNavigateDown()
+                            return@onPreviewKeyEvent true
+                        }
+                    }
+                    false
+                }
                 .clickable { onJumpToTop() }
                 .padding(horizontal = 8.dp, vertical = 4.dp)
                 .testTag("${tagPrefix}_jump_top"),
@@ -126,12 +144,26 @@ fun JumpBarControl(
             color = TextMuted
         )
 
-        // Jump to Bottom button
+        // Jump to Bottom button: only triggers jump on OK/Enter/Click, never on DPAD LEFT/RIGHT
         Row(
             modifier = Modifier
                 .clip(RoundedCornerShape(6.dp))
                 .background(MaZzeSurfaceDark)
                 .tvFocusable(shape = RoundedCornerShape(6.dp), borderWidth = 2.dp)
+                .onPreviewKeyEvent { event ->
+                    if (event.type == KeyEventType.KeyDown) {
+                        val keyCode = event.nativeKeyEvent.keyCode
+                        if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && onNavigateRight != null) {
+                            onNavigateRight()
+                            return@onPreviewKeyEvent true
+                        }
+                        if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN && onNavigateDown != null) {
+                            onNavigateDown()
+                            return@onPreviewKeyEvent true
+                        }
+                    }
+                    false
+                }
                 .clickable { onJumpToBottom() }
                 .padding(horizontal = 8.dp, vertical = 4.dp)
                 .testTag("${tagPrefix}_jump_bottom"),

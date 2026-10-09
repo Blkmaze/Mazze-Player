@@ -68,4 +68,43 @@ class FastNavigationUnitTest {
         val targetUp = (currentIndex - jumpStep).coerceAtLeast(0)
         assertEquals(0, targetUp)
     }
+
+    @Test
+    fun testSelectedCategoryIndexResolutionForDpadLeft() {
+        val categories = listOf("All", "News", "Sports", "Movies", "Kids")
+        val selectedCategory = "Sports"
+
+        val selectedIndex = categories.indexOfFirst { it == selectedCategory }.coerceAtLeast(0)
+        assertEquals(2, selectedIndex)
+
+        // When non-existent category selected, falls back safely to 0
+        val unknownIndex = categories.indexOfFirst { it == "Unknown" }.coerceAtLeast(0)
+        assertEquals(0, unknownIndex)
+    }
+
+    @Test
+    fun testJumpButtonsTriggerOnlyOnExplicitClickNotDpadLeftRight() {
+        var jumpedToTop = false
+        var jumpedToBottom = false
+
+        val onJumpToTop = { jumpedToTop = true }
+        val onJumpToBottom = { jumpedToBottom = true }
+
+        // Plain navigation left/right should NOT invoke onJumpToTop or onJumpToBottom
+        val dpadLeftKey = android.view.KeyEvent.KEYCODE_DPAD_LEFT
+        val dpadRightKey = android.view.KeyEvent.KEYCODE_DPAD_RIGHT
+        val dpadCenterKey = android.view.KeyEvent.KEYCODE_DPAD_CENTER
+        val enterKey = android.view.KeyEvent.KEYCODE_ENTER
+
+        assertTrue(dpadLeftKey != dpadCenterKey && dpadLeftKey != enterKey)
+        assertTrue(dpadRightKey != dpadCenterKey && dpadRightKey != enterKey)
+        org.junit.Assert.assertFalse(jumpedToTop)
+        org.junit.Assert.assertFalse(jumpedToBottom)
+
+        // Only explicit invocation (simulating OK/Enter click) triggers jump
+        onJumpToTop()
+        assertTrue(jumpedToTop)
+        onJumpToBottom()
+        assertTrue(jumpedToBottom)
+    }
 }

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -25,11 +26,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -63,14 +67,20 @@ fun CategorySidePanel(
     selectedCategoryId: String,
     onSelectCategory: (String) -> Unit,
     modifier: Modifier = Modifier,
-    title: String = "Categories"
+    title: String = "Categories",
+    selectedCategoryFocusRequester: FocusRequester = remember { FocusRequester() },
+    onNavigateRight: (() -> Unit)? = null,
+    listState: LazyListState = rememberLazyListState()
 ) {
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val panelWidth = if (isLandscape) 175.dp else 135.dp
-    val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
+
+    val selectedIndex = remember(categories, selectedCategoryId) {
+        categories.indexOfFirst { it.id == selectedCategoryId }.coerceAtLeast(0)
+    }
 
     Surface(
         color = MaZzeSurfaceDark,
@@ -114,7 +124,20 @@ fun CategorySidePanel(
                 },
                 label = "${categories.size} Cats",
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
-                tagPrefix = "cat"
+                tagPrefix = "cat",
+                onNavigateRight = onNavigateRight,
+                onNavigateDown = {
+                    coroutineScope.launch {
+                        if (categories.isNotEmpty() && selectedIndex in categories.indices) {
+                            try {
+                                listState.scrollToItem(selectedIndex)
+                            } catch (_: Exception) {}
+                            try {
+                                selectedCategoryFocusRequester.requestFocus()
+                            } catch (_: Exception) {}
+                        }
+                    }
+                }
             )
 
             // Scrollable Category List with TV D-pad focusability and fast remote navigation
@@ -141,6 +164,8 @@ fun CategorySidePanel(
                         item = cat,
                         isSelected = isSelected,
                         onClick = { onSelectCategory(cat.id) },
+                        focusRequester = if (isSelected) selectedCategoryFocusRequester else null,
+                        onNavigateRight = onNavigateRight,
                         onNavigateDown = if (isLastItem) {
                             { focusManager.moveFocus(FocusDirection.Down) }
                         } else null
@@ -156,29 +181,43 @@ private fun CategoryPanelRow(
     item: CategoryItemData,
     isSelected: Boolean,
     onClick: () -> Unit,
+    focusRequester: FocusRequester? = null,
+    onNavigateRight: (() -> Unit)? = null,
     onNavigateDown: (() -> Unit)? = null
 ) {
     val backgroundColor = if (isSelected) MaZzePrimary.copy(alpha = 0.35f) else Color.Transparent
     val textColor = if (isSelected) Color.White else TextSecondary
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(backgroundColor)
-            .tvFocusable(shape = RoundedCornerShape(8.dp))
-            .onPreviewKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown && event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-                    if (onNavigateDown != null) {
-                        onNavigateDown()
-                        return@onPreviewKeyEvent true
-                    }
+    var rowModifier = Modifier
+        .fillMaxWidth()
+        .clip(RoundedCornerShape(8.dp))
+        .background(backgroundColor)
+        .tvFocusable(shape = RoundedCornerShape(8.dp))
+
+    if (focusRequester != null) {
+        rowModifier = rowModifier.focusRequester(focusRequester)
+    }
+
+    rowModifier = rowModifier
+        .onPreviewKeyEvent { event ->
+            if (event.type == KeyEventType.KeyDown) {
+                if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && onNavigateRight != null) {
+                    onNavigateRight()
+                    return@onPreviewKeyEvent true
                 }
-                false
+                if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_DOWN && onNavigateDown != null) {
+                    onNavigateDown()
+                    return@onPreviewKeyEvent true
+                }
             }
-            .clickable { onClick() }
-            .padding(horizontal = 10.dp, vertical = 9.dp)
-            .testTag("side_category_${item.id}"),
+            false
+        }
+        .clickable { onClick() }
+        .padding(horizontal = 10.dp, vertical = 9.dp)
+        .testTag("side_category_${item.id}")
+
+    Row(
+        modifier = rowModifier,
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Active indicator line
