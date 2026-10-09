@@ -95,6 +95,7 @@ fun MaZzeTopBar(
                 modifier = Modifier
                     .clip(RoundedCornerShape(16.dp))
                     .background(MaZzeSurfaceBorder)
+                    .tvFocusable(shape = RoundedCornerShape(16.dp))
                     .clickable { onOpenSettings() }
                     .padding(horizontal = 10.dp, vertical = 5.dp)
                     .testTag("server_status_badge")
@@ -121,7 +122,9 @@ fun MaZzeTopBar(
 
             IconButton(
                 onClick = onRefresh,
-                modifier = Modifier.testTag("refresh_button")
+                modifier = Modifier
+                    .tvFocusable(shape = CircleShape)
+                    .testTag("refresh_button")
             ) {
                 Icon(
                     imageVector = Icons.Default.Refresh,
@@ -132,7 +135,9 @@ fun MaZzeTopBar(
 
             IconButton(
                 onClick = onOpenSettings,
-                modifier = Modifier.testTag("settings_button")
+                modifier = Modifier
+                    .tvFocusable(shape = CircleShape)
+                    .testTag("settings_button")
             ) {
                 Icon(
                     imageVector = Icons.Default.Settings,

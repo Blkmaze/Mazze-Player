@@ -24,6 +24,9 @@ class XtreamConfigUnitTest {
 
         val vodUrl = config.buildVodStreamUrl(6789, "mp4")
         assertEquals("http://iptv.example.com:8080/movie/testuser/testpassword/6789.mp4", vodUrl)
+
+        val seriesUrl = config.buildSeriesStreamUrl("9999", "mp4")
+        assertEquals("http://iptv.example.com:8080/series/testuser/testpassword/9999.mp4", seriesUrl)
     }
 
     @Test

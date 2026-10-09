@@ -1,5 +1,6 @@
 package com.example.ui.screens.home
 
+import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -20,13 +21,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -42,13 +43,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.RecentStreamEntity
 import com.example.data.local.XtreamProfileEntity
-import com.example.data.model.LiveStream
+import com.example.ui.components.tvFocusable
 import com.example.ui.theme.MaZzeAccentAmber
 import com.example.ui.theme.MaZzeDarkBackground
 import com.example.ui.theme.MaZzeError
@@ -73,13 +76,16 @@ fun HomeScreen(
     onPlayRecent: (RecentStreamEntity) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
             .background(MaZzeDarkBackground)
-            .padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(horizontal = if (isLandscape) 0.dp else 16.dp),
+        contentPadding = PaddingValues(vertical = if (isLandscape) 8.dp else 16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         // Hero / Xtream Status Banner
         item {
@@ -90,7 +96,7 @@ fun HomeScreen(
             )
         }
 
-        // Quick Navigation Tiles
+        // Quick Navigation Tiles: Wide row in landscape on TV, stacked grid on portrait phones
         item {
             Text(
                 text = "Media Library",
@@ -98,49 +104,113 @@ fun HomeScreen(
                 color = TextPrimary,
                 fontWeight = FontWeight.Bold
             )
-            Spacer(modifier = Modifier.height(10.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                QuickNavCard(
-                    title = "Live TV",
-                    subtitle = "All Channels",
-                    icon = Icons.Default.Tv,
-                    accentColor = MaZzePrimary,
-                    modifier = Modifier.weight(1f),
-                    onClick = { onNavigate(Screen.LiveTv) }
-                )
-                QuickNavCard(
-                    title = "Movies / VOD",
-                    subtitle = "On Demand",
-                    icon = Icons.Default.Movie,
-                    accentColor = MaZzeSecondary,
-                    modifier = Modifier.weight(1f),
-                    onClick = { onNavigate(Screen.Vod) }
-                )
-            }
-            Spacer(modifier = Modifier.height(10.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                QuickNavCard(
-                    title = "Favorites",
-                    subtitle = "Saved Channels",
-                    icon = Icons.Default.Favorite,
-                    accentColor = MaZzeAccentAmber,
-                    modifier = Modifier.weight(1f),
-                    onClick = { onNavigate(Screen.Favorites) }
-                )
-                QuickNavCard(
-                    title = "Internal Settings",
-                    subtitle = "Xtream Config",
-                    icon = Icons.Default.Settings,
-                    accentColor = Color(0xFF00B0FF),
-                    modifier = Modifier.weight(1f),
-                    onClick = { onNavigate(Screen.InternalSettings) }
-                )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (isLandscape) {
+                // TV / Landscape: Wide row of 5 tiles with guaranteed fit across screen
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    QuickNavCard(
+                        title = "Live TV",
+                        subtitle = "Channels",
+                        icon = Icons.Default.Tv,
+                        accentColor = MaZzePrimary,
+                        modifier = Modifier.weight(1f),
+                        onClick = { onNavigate(Screen.LiveTv) }
+                    )
+                    QuickNavCard(
+                        title = "Movies",
+                        subtitle = "VOD",
+                        icon = Icons.Default.Movie,
+                        accentColor = MaZzeSecondary,
+                        modifier = Modifier.weight(1f),
+                        onClick = { onNavigate(Screen.Vod) }
+                    )
+                    QuickNavCard(
+                        title = "Series",
+                        subtitle = "Shows",
+                        icon = Icons.Default.VideoLibrary,
+                        accentColor = Color(0xFFE040FB),
+                        modifier = Modifier.weight(1f),
+                        onClick = { onNavigate(Screen.Series) }
+                    )
+                    QuickNavCard(
+                        title = "Favorites",
+                        subtitle = "Saved",
+                        icon = Icons.Default.Favorite,
+                        accentColor = MaZzeAccentAmber,
+                        modifier = Modifier.weight(1f),
+                        onClick = { onNavigate(Screen.Favorites) }
+                    )
+                    QuickNavCard(
+                        title = "Settings",
+                        subtitle = "Config",
+                        icon = Icons.Default.Settings,
+                        accentColor = Color(0xFF00B0FF),
+                        modifier = Modifier.weight(1f),
+                        onClick = { onNavigate(Screen.InternalSettings) }
+                    )
+                }
+            } else {
+                // Portrait / Phone: 2x2 grid + wide settings card
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        QuickNavCard(
+                            title = "Live TV",
+                            subtitle = "All Channels",
+                            icon = Icons.Default.Tv,
+                            accentColor = MaZzePrimary,
+                            modifier = Modifier.weight(1f),
+                            onClick = { onNavigate(Screen.LiveTv) }
+                        )
+                        QuickNavCard(
+                            title = "Movies / VOD",
+                            subtitle = "On Demand",
+                            icon = Icons.Default.Movie,
+                            accentColor = MaZzeSecondary,
+                            modifier = Modifier.weight(1f),
+                            onClick = { onNavigate(Screen.Vod) }
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        QuickNavCard(
+                            title = "Series",
+                            subtitle = "Seasons & Shows",
+                            icon = Icons.Default.VideoLibrary,
+                            accentColor = Color(0xFFE040FB),
+                            modifier = Modifier.weight(1f),
+                            onClick = { onNavigate(Screen.Series) }
+                        )
+                        QuickNavCard(
+                            title = "Favorites",
+                            subtitle = "Saved Channels",
+                            icon = Icons.Default.Favorite,
+                            accentColor = MaZzeAccentAmber,
+                            modifier = Modifier.weight(1f),
+                            onClick = { onNavigate(Screen.Favorites) }
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        QuickNavCard(
+                            title = "Internal Settings",
+                            subtitle = "Xtream API Configuration & Profiles",
+                            icon = Icons.Default.Settings,
+                            accentColor = Color(0xFF00B0FF),
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = { onNavigate(Screen.InternalSettings) }
+                        )
+                    }
+                }
             }
         }
 
@@ -154,21 +224,15 @@ fun HomeScreen(
             }
         }
 
-        // Recently Watched Shelf
+        // Recently Watched Shelf (horizontal row of focusable items)
         if (recents.isNotEmpty()) {
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Recently Watched",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = TextPrimary,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+                Text(
+                    text = "Recently Watched",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = TextPrimary,
+                    fontWeight = FontWeight.Bold
+                )
                 Spacer(modifier = Modifier.height(8.dp))
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -188,7 +252,9 @@ fun HomeScreen(
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaZzeSurfaceElevated),
                 shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .tvFocusable(shape = RoundedCornerShape(12.dp))
             ) {
                 Row(
                     modifier = Modifier.padding(14.dp),
@@ -211,13 +277,13 @@ fun HomeScreen(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Custom Xtream Credentials",
+                            text = "TV Remote & Xtream Configuration",
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = TextPrimary
                         )
                         Text(
-                            text = "You can add multiple Xtream Codes server URLs, usernames, and passwords in Settings at any time.",
+                            text = "Navigate with D-pad Up/Down/Left/Right and press Select. Configure your server in Settings at any time.",
                             style = MaterialTheme.typography.bodySmall,
                             color = TextMuted
                         )
@@ -245,14 +311,14 @@ fun XtreamStatusHeroCard(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("xtream_status_hero_card"),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = Color.Transparent)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(gradientBrush)
-                .padding(18.dp)
+                .padding(16.dp)
         ) {
             Column {
                 Row(
@@ -294,17 +360,17 @@ fun XtreamStatusHeroCard(
                     }
 
                     Text(
-                        text = "MaZze v1.0",
+                        text = "MaZze • Android TV & Fire TV",
                         style = MaterialTheme.typography.labelSmall,
                         color = TextMuted
                     )
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
-                    text = activeProfile?.profileName ?: "Xtream Codes Player",
-                    style = MaterialTheme.typography.headlineSmall,
+                    text = activeProfile?.profileName ?: "Xtream Codes TV Player",
+                    style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.ExtraBold,
                     color = Color.White
                 )
@@ -317,10 +383,11 @@ fun XtreamStatusHeroCard(
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary,
-                    maxLines = 2
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 Button(
                     onClick = onConfigureClick,
@@ -328,7 +395,9 @@ fun XtreamStatusHeroCard(
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaZzePrimary
                     ),
-                    modifier = Modifier.testTag("configure_credentials_button")
+                    modifier = Modifier
+                        .tvFocusable(shape = RoundedCornerShape(8.dp))
+                        .testTag("configure_credentials_button")
                 ) {
                     Icon(
                         imageVector = Icons.Default.VpnKey,
@@ -359,18 +428,19 @@ fun QuickNavCard(
 ) {
     Card(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(10.dp))
+            .tvFocusable(shape = RoundedCornerShape(10.dp), focusedScale = 1.02f)
             .clickable { onClick() },
         colors = CardDefaults.cardColors(containerColor = MaZzeSurfaceDark),
-        shape = RoundedCornerShape(12.dp)
+        shape = RoundedCornerShape(10.dp)
     ) {
         Column(
-            modifier = Modifier.padding(14.dp)
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp)
         ) {
             Box(
                 modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(10.dp))
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(8.dp))
                     .background(accentColor.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center
             ) {
@@ -378,20 +448,26 @@ fun QuickNavCard(
                     imageVector = icon,
                     contentDescription = title,
                     tint = accentColor,
-                    modifier = Modifier.size(22.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
-                color = TextPrimary
+                color = TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                fontSize = 12.sp
             )
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
-                color = TextMuted
+                color = TextMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                fontSize = 10.sp
             )
         }
     }
@@ -406,7 +482,9 @@ fun XtreamAccountDetailsCard(
     val server = authResponse.serverInfo
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .tvFocusable(shape = RoundedCornerShape(12.dp)),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaZzeSurfaceDark)
     ) {
@@ -455,7 +533,9 @@ fun RecentStreamCard(
 ) {
     Card(
         modifier = Modifier
-            .width(160.dp)
+            .width(150.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .tvFocusable(shape = RoundedCornerShape(10.dp))
             .clickable { onClick() },
         shape = RoundedCornerShape(10.dp),
         colors = CardDefaults.cardColors(containerColor = MaZzeSurfaceElevated)
@@ -464,7 +544,7 @@ fun RecentStreamCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(60.dp)
+                    .height(55.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(MaZzeSurfaceBorder),
                 contentAlignment = Alignment.Center
@@ -473,7 +553,7 @@ fun RecentStreamCard(
                     imageVector = Icons.Default.PlayArrow,
                     contentDescription = null,
                     tint = MaZzeSecondary,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(26.dp)
                 )
             }
             Spacer(modifier = Modifier.height(6.dp))
@@ -482,7 +562,8 @@ fun RecentStreamCard(
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary,
-                maxLines = 1
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = item.streamType.uppercase(),

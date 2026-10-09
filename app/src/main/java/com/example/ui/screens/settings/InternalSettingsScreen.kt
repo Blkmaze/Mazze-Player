@@ -43,6 +43,7 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import com.example.ui.components.tvFocusable
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -119,9 +120,9 @@ fun InternalSettingsScreen(
         modifier = modifier
             .fillMaxSize()
             .background(MaZzeDarkBackground)
-            .padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(horizontal = 4.dp),
+        contentPadding = PaddingValues(vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         // Section 1: Header
         item {
@@ -218,6 +219,7 @@ fun InternalSettingsScreen(
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier
                             .fillMaxWidth()
+                            .tvFocusable(shape = RoundedCornerShape(10.dp))
                             .testTag("input_profile_name")
                     )
 
@@ -239,6 +241,7 @@ fun InternalSettingsScreen(
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier
                             .fillMaxWidth()
+                            .tvFocusable(shape = RoundedCornerShape(10.dp))
                             .testTag("input_server_url")
                     )
 
@@ -256,6 +259,7 @@ fun InternalSettingsScreen(
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier
                             .fillMaxWidth()
+                            .tvFocusable(shape = RoundedCornerShape(10.dp))
                             .testTag("input_username")
                     )
 
@@ -271,7 +275,9 @@ fun InternalSettingsScreen(
                         trailingIcon = {
                             IconButton(
                                 onClick = { isPasswordVisible = !isPasswordVisible },
-                                modifier = Modifier.testTag("toggle_password_visibility")
+                                modifier = Modifier
+                                    .tvFocusable(shape = CircleShape)
+                                    .testTag("toggle_password_visibility")
                             ) {
                                 Icon(
                                     imageVector = if (isPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
@@ -287,6 +293,7 @@ fun InternalSettingsScreen(
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier
                             .fillMaxWidth()
+                            .tvFocusable(shape = RoundedCornerShape(10.dp))
                             .testTag("input_password")
                     )
 
@@ -307,7 +314,9 @@ fun InternalSettingsScreen(
                                     selectedContainerColor = MaZzePrimary,
                                     selectedLabelColor = Color.White
                                 ),
-                                modifier = Modifier.testTag("format_m3u8")
+                                modifier = Modifier
+                                    .tvFocusable(shape = RoundedCornerShape(8.dp))
+                                    .testTag("format_m3u8")
                             )
                             FilterChip(
                                 selected = streamFormat == "ts",
@@ -317,7 +326,9 @@ fun InternalSettingsScreen(
                                     selectedContainerColor = MaZzePrimary,
                                     selectedLabelColor = Color.White
                                 ),
-                                modifier = Modifier.testTag("format_ts")
+                                modifier = Modifier
+                                    .tvFocusable(shape = RoundedCornerShape(8.dp))
+                                    .testTag("format_ts")
                             )
                         }
                     }
@@ -339,6 +350,7 @@ fun InternalSettingsScreen(
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier
                                 .weight(1f)
+                                .tvFocusable(shape = RoundedCornerShape(8.dp))
                                 .testTag("test_connection_button")
                         ) {
                             if (isTesting) {
@@ -378,6 +390,7 @@ fun InternalSettingsScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = MaZzePrimary),
                             modifier = Modifier
                                 .weight(1f)
+                                .tvFocusable(shape = RoundedCornerShape(8.dp))
                                 .testTag("save_configuration_button")
                         ) {
                             Icon(
@@ -527,6 +540,7 @@ fun SavedProfileItem(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
+            .tvFocusable(shape = RoundedCornerShape(12.dp))
             .clickable { onSelect() },
         colors = CardDefaults.cardColors(
             containerColor = if (isActive) MaZzeSurfaceElevated else MaZzeSurfaceDark

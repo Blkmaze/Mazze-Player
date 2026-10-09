@@ -56,6 +56,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.example.ui.components.tvFocusable
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -238,7 +239,9 @@ fun VideoPlayerScreen(
                                 exoPlayer.play()
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = MaZzePrimary),
-                            modifier = Modifier.testTag("player_retry_button")
+                            modifier = Modifier
+                                .tvFocusable(shape = RoundedCornerShape(8.dp))
+                                .testTag("player_retry_button")
                         ) {
                             Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
@@ -246,7 +249,8 @@ fun VideoPlayerScreen(
                         }
                         Button(
                             onClick = onBack,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray),
+                            modifier = Modifier.tvFocusable(shape = RoundedCornerShape(8.dp))
                         ) {
                             Text("Back")
                         }
@@ -280,6 +284,7 @@ fun VideoPlayerScreen(
                         modifier = Modifier
                             .clip(CircleShape)
                             .background(Color.Black.copy(alpha = 0.5f))
+                            .tvFocusable(shape = CircleShape)
                             .testTag("player_back_button")
                     ) {
                         Icon(
@@ -329,6 +334,7 @@ fun VideoPlayerScreen(
                         modifier = Modifier
                             .clip(CircleShape)
                             .background(Color.Black.copy(alpha = 0.5f))
+                            .tvFocusable(shape = CircleShape)
                             .testTag("aspect_ratio_button")
                     ) {
                         Icon(
@@ -346,6 +352,7 @@ fun VideoPlayerScreen(
                         .size(68.dp)
                         .clip(CircleShape)
                         .background(Color.Black.copy(alpha = 0.65f))
+                        .tvFocusable(shape = CircleShape)
                         .clickable {
                             if (exoPlayer.isPlaying) {
                                 exoPlayer.pause()

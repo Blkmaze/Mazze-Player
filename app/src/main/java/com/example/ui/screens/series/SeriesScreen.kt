@@ -1,4 +1,4 @@
-package com.example.ui.screens.vod
+package com.example.ui.screens.series
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -20,11 +20,13 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -43,8 +45,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.example.data.model.VodCategory
-import com.example.data.model.VodStream
+import com.example.data.model.SeriesCategory
+import com.example.data.model.SeriesItem
 import com.example.ui.components.CategoryItemData
 import com.example.ui.components.CategorySidePanel
 import com.example.ui.components.tvFocusable
@@ -60,23 +62,24 @@ import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 
 @Composable
-fun VodScreen(
-    categories: List<VodCategory>,
+fun SeriesScreen(
+    categories: List<SeriesCategory>,
     selectedCategoryId: String,
-    streams: List<VodStream>,
+    seriesList: List<SeriesItem>,
+    isLoading: Boolean,
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
     onSelectCategory: (String) -> Unit,
-    onPlayMovie: (VodStream) -> Unit,
+    onOpenSeries: (SeriesItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val sideCategories = remember(categories, streams) {
-        val totalCount = streams.size
+    val sideCategories = remember(categories, seriesList) {
+        val totalCount = seriesList.size
         categories.map { cat ->
             val count = if (cat.categoryId == "all") {
                 totalCount
             } else {
-                streams.count { it.categoryId == cat.categoryId }.takeIf { it > 0 }
+                seriesList.count { it.categoryId == cat.categoryId }.takeIf { it > 0 }
             }
             CategoryItemData(
                 id = cat.categoryId,
@@ -95,7 +98,7 @@ fun VodScreen(
             categories = sideCategories,
             selectedCategoryId = selectedCategoryId,
             onSelectCategory = onSelectCategory,
-            title = "Movies"
+            title = "Series"
         )
 
         Column(
@@ -107,7 +110,7 @@ fun VodScreen(
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = onSearchQueryChange,
-                    placeholder = { Text("Search movies...", color = TextMuted, fontSize = 13.sp) },
+                    placeholder = { Text("Search TV series...", color = TextMuted, fontSize = 13.sp) },
                     leadingIcon = {
                         Icon(Icons.Default.Search, contentDescription = null, tint = MaZzeSecondary, modifier = Modifier.size(18.dp))
                     },
@@ -132,11 +135,22 @@ fun VodScreen(
                         .fillMaxWidth()
                         .height(46.dp)
                         .tvFocusable(shape = RoundedCornerShape(10.dp), focusedScale = 1.01f)
-                        .testTag("search_vod_input")
+                        .testTag("search_series_input")
                 )
             }
 
-            if (streams.isEmpty()) {
+            if (isLoading) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(color = MaZzeSecondary, modifier = Modifier.size(36.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text("Loading TV series...", color = TextSecondary, fontSize = 12.sp)
+                    }
+                }
+            } else if (seriesList.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
@@ -146,20 +160,20 @@ fun VodScreen(
                         modifier = Modifier.padding(20.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Movie,
+                            imageVector = Icons.Default.VideoLibrary,
                             contentDescription = null,
                             tint = TextMuted,
                             modifier = Modifier.size(44.dp)
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "No movies found",
+                            text = "No series found",
                             style = MaterialTheme.typography.titleMedium,
                             color = TextPrimary,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = if (searchQuery.isNotBlank()) "No movies match '$searchQuery'" else "Select another category.",
+                            text = if (searchQuery.isNotBlank()) "No series match '$searchQuery'" else "Select another category.",
                             style = MaterialTheme.typography.bodySmall,
                             color = TextMuted
                         )
@@ -173,10 +187,10 @@ fun VodScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(streams, key = { it.streamIdInt }) { movie ->
-                        MovieGridCard(
-                            movie = movie,
-                            onClick = { onPlayMovie(movie) }
+                    items(seriesList, key = { it.seriesIdInt }) { series ->
+                        SeriesGridCard(
+                            series = series,
+                            onClick = { onOpenSeries(series) }
                         )
                     }
                 }
@@ -186,8 +200,8 @@ fun VodScreen(
 }
 
 @Composable
-fun MovieGridCard(
-    movie: VodStream,
+fun SeriesGridCard(
+    series: SeriesItem,
     onClick: () -> Unit
 ) {
     Card(
@@ -196,7 +210,7 @@ fun MovieGridCard(
             .clip(RoundedCornerShape(8.dp))
             .tvFocusable(shape = RoundedCornerShape(8.dp))
             .clickable { onClick() }
-            .testTag("movie_item_${movie.streamIdInt}"),
+            .testTag("series_item_${series.seriesIdInt}"),
         colors = CardDefaults.cardColors(containerColor = MaZzeSurfaceDark),
         shape = RoundedCornerShape(8.dp)
     ) {
@@ -208,23 +222,23 @@ fun MovieGridCard(
                     .background(MaZzeSurfaceElevated),
                 contentAlignment = Alignment.Center
             ) {
-                if (!movie.streamIcon.isNullOrBlank()) {
+                if (!series.cover.isNullOrBlank()) {
                     AsyncImage(
-                        model = movie.streamIcon,
-                        contentDescription = movie.name,
+                        model = series.cover,
+                        contentDescription = series.name,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
                     Icon(
-                        imageVector = Icons.Default.Movie,
+                        imageVector = Icons.Default.Tv,
                         contentDescription = null,
                         tint = MaZzeSecondary,
                         modifier = Modifier.size(32.dp)
                     )
                 }
 
-                if (movie.rating != null && movie.rating.toString().isNotBlank() && movie.rating.toString() != "0") {
+                if (series.rating != null && series.rating.toString().isNotBlank() && series.rating.toString() != "0") {
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
@@ -241,7 +255,7 @@ fun MovieGridCard(
                                 modifier = Modifier.size(10.dp)
                             )
                             Text(
-                                text = " ${movie.rating}",
+                                text = " ${series.rating}",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = Color.White,
                                 fontSize = 9.sp,
@@ -254,7 +268,7 @@ fun MovieGridCard(
 
             Column(modifier = Modifier.padding(6.dp)) {
                 Text(
-                    text = movie.name,
+                    text = series.name,
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary,
@@ -262,10 +276,11 @@ fun MovieGridCard(
                     fontSize = 11.sp
                 )
                 Text(
-                    text = movie.containerExtension?.uppercase() ?: "MP4",
+                    text = series.genre ?: "TV Series",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaZzeAccentAmber,
-                    fontSize = 9.sp
+                    color = TextMuted,
+                    fontSize = 9.sp,
+                    maxLines = 1
                 )
             }
         }

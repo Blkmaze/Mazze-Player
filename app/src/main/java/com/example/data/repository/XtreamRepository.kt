@@ -7,6 +7,11 @@ import com.example.data.local.XtreamProfileEntity
 import com.example.data.model.InternalConfig
 import com.example.data.model.LiveCategory
 import com.example.data.model.LiveStream
+import com.example.data.model.SeriesCategory
+import com.example.data.model.SeriesDetail
+import com.example.data.model.SeriesEpisode
+import com.example.data.model.SeriesItem
+import com.example.data.model.SeriesSeason
 import com.example.data.model.VodCategory
 import com.example.data.model.VodStream
 import com.example.data.model.XtreamAuthResponse
@@ -294,6 +299,172 @@ class XtreamRepository(
             }
         }
 
+    // --- Series API ---
+
+    /**
+     * Fetch Series Categories: action=get_series_categories
+     */
+    suspend fun getSeriesCategories(config: InternalConfig): Result<List<SeriesCategory>> =
+        withContext(Dispatchers.IO) {
+            try {
+                val url = "${config.formattedBaseUrl}/player_api.php?username=${config.username}&password=${config.password}&action=get_series_categories"
+                val request = Request.Builder().url(url).header("User-Agent", "MaZze-IPTV/1.0").build()
+
+                httpClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@withContext Result.failure(Exception("HTTP ${response.code}"))
+                    val body = response.body?.string() ?: "[]"
+                    val jsonArray = JSONArray(body)
+                    val list = mutableListOf<SeriesCategory>()
+                    for (i in 0 until jsonArray.length()) {
+                        val obj = jsonArray.optJSONObject(i) ?: continue
+                        list.add(
+                            SeriesCategory(
+                                categoryId = obj.optString("category_id"),
+                                categoryName = obj.optString("category_name"),
+                                parentId = obj.opt("parent_id")
+                            )
+                        )
+                    }
+                    Result.success(list)
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    /**
+     * Fetch Series List: action=get_series
+     */
+    suspend fun getSeriesList(config: InternalConfig, categoryId: String? = null): Result<List<SeriesItem>> =
+        withContext(Dispatchers.IO) {
+            try {
+                var url = "${config.formattedBaseUrl}/player_api.php?username=${config.username}&password=${config.password}&action=get_series"
+                if (!categoryId.isNullOrBlank() && categoryId != "all") {
+                    url += "&category_id=$categoryId"
+                }
+                val request = Request.Builder().url(url).header("User-Agent", "MaZze-IPTV/1.0").build()
+
+                httpClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@withContext Result.failure(Exception("HTTP ${response.code}"))
+                    val body = response.body?.string() ?: "[]"
+                    val jsonArray = JSONArray(body)
+                    val list = mutableListOf<SeriesItem>()
+                    for (i in 0 until jsonArray.length()) {
+                        val obj = jsonArray.optJSONObject(i) ?: continue
+                        list.add(
+                            SeriesItem(
+                                num = obj.opt("num"),
+                                name = obj.optString("name"),
+                                seriesId = obj.opt("series_id"),
+                                cover = obj.optString("cover").takeIf { it.isNotBlank() },
+                                plot = obj.optString("plot"),
+                                cast = obj.optString("cast"),
+                                director = obj.optString("director"),
+                                genre = obj.optString("genre"),
+                                releaseDate = obj.optString("releaseDate"),
+                                rating = obj.opt("rating"),
+                                categoryId = obj.optString("category_id")
+                            )
+                        )
+                    }
+                    Result.success(list)
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    /**
+     * Fetch Series Info with Seasons & Episodes: action=get_series_info&series_id=...
+     */
+    suspend fun getSeriesInfo(config: InternalConfig, seriesItem: SeriesItem): Result<SeriesDetail> =
+        withContext(Dispatchers.IO) {
+            try {
+                val url = "${config.formattedBaseUrl}/player_api.php?username=${config.username}&password=${config.password}&action=get_series_info&series_id=${seriesItem.seriesIdInt}"
+                val request = Request.Builder().url(url).header("User-Agent", "MaZze-IPTV/1.0").build()
+
+                httpClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@withContext Result.failure(Exception("HTTP ${response.code}"))
+                    val body = response.body?.string() ?: "{}"
+                    val json = JSONObject(body)
+
+                    // Seasons
+                    val seasonsList = mutableListOf<SeriesSeason>()
+                    val seasonsArr = json.optJSONArray("seasons")
+                    if (seasonsArr != null) {
+                        for (i in 0 until seasonsArr.length()) {
+                            val sObj = seasonsArr.optJSONObject(i) ?: continue
+                            seasonsList.add(
+                                SeriesSeason(
+                                    id = sObj.optInt("id", i + 1),
+                                    seasonNumber = sObj.optInt("season_number", i + 1),
+                                    name = sObj.optString("name", "Season ${i + 1}"),
+                                    episodeCount = sObj.optInt("episode_count", 0),
+                                    overview = sObj.optString("overview"),
+                                    cover = sObj.optString("cover")
+                                )
+                            )
+                        }
+                    }
+
+                    // Episodes map
+                    val episodesMap = mutableMapOf<Int, MutableList<SeriesEpisode>>()
+                    val episodesObj = json.optJSONObject("episodes")
+                    if (episodesObj != null) {
+                        val seasonKeys = episodesObj.keys()
+                        while (seasonKeys.hasNext()) {
+                            val key = seasonKeys.next()
+                            val seasonNumber = key.toIntOrNull() ?: 1
+                            val epsArr = episodesObj.optJSONArray(key) ?: continue
+                            val epsList = mutableListOf<SeriesEpisode>()
+                            for (e in 0 until epsArr.length()) {
+                                val epObj = epsArr.optJSONObject(e) ?: continue
+                                val epInfo = epObj.optJSONObject("info")
+                                epsList.add(
+                                    SeriesEpisode(
+                                        id = epObj.optString("id"),
+                                        episodeNum = epObj.optInt("episode_num", e + 1),
+                                        title = epObj.optString("title", "Episode ${e + 1}"),
+                                        containerExtension = epObj.optString("container_extension", "mp4"),
+                                        plot = epInfo?.optString("plot"),
+                                        duration = epInfo?.optString("duration"),
+                                        rating = epInfo?.optString("rating"),
+                                        season = seasonNumber,
+                                        seriesName = seriesItem.name
+                                    )
+                                )
+                            }
+                            episodesMap[seasonNumber] = epsList
+                        }
+                    }
+
+                    // If seasons was empty but episodes had seasons, populate seasons
+                    if (seasonsList.isEmpty() && episodesMap.isNotEmpty()) {
+                        episodesMap.keys.sorted().forEach { sNum ->
+                            seasonsList.add(
+                                SeriesSeason(
+                                    id = sNum,
+                                    seasonNumber = sNum,
+                                    name = "Season $sNum",
+                                    episodeCount = episodesMap[sNum]?.size ?: 0
+                                )
+                            )
+                        }
+                    }
+
+                    Result.success(
+                        SeriesDetail(
+                            info = seriesItem,
+                            seasons = seasonsList.sortedBy { it.seasonNumber },
+                            episodesBySeason = episodesMap
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
     // --- Favorites & Recents ---
     suspend fun toggleFavorite(stream: LiveStream, isFav: Boolean) = withContext(Dispatchers.IO) {
         if (isFav) {
@@ -390,6 +561,143 @@ class XtreamRepository(
         } else {
             all.filter { it.categoryId == categoryId }
         }
+    }
+
+    // Demo Series Data
+    fun getDemoSeriesCategories(): List<SeriesCategory> = listOf(
+        SeriesCategory(categoryId = "all", categoryName = "All Series"),
+        SeriesCategory(categoryId = "demo_scifi", categoryName = "Sci-Fi & Action"),
+        SeriesCategory(categoryId = "demo_nature", categoryName = "Documentary & Nature"),
+        SeriesCategory(categoryId = "demo_fantasy", categoryName = "Animation & Fantasy")
+    )
+
+    fun getDemoSeriesList(categoryId: String? = null): List<SeriesItem> {
+        val all = listOf(
+            SeriesItem(
+                num = 1,
+                name = "Tears of Steel: Resistance",
+                seriesId = 2001,
+                cover = "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=400",
+                plot = "Set in a dystopian future where humanity faces robotic overlords, a rogue team of scientists attempts to alter history.",
+                genre = "Sci-Fi, Cyberpunk",
+                releaseDate = "2024",
+                rating = "8.9",
+                categoryId = "demo_scifi"
+            ),
+            SeriesItem(
+                num = 2,
+                name = "Cosmos & Ocean Odyssey",
+                seriesId = 2002,
+                cover = "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=400",
+                plot = "An awe-inspiring voyage spanning distant galaxies, nebula nurseries, and uncharted deep ocean thermal trenches.",
+                genre = "Documentary, Nature",
+                releaseDate = "2023",
+                rating = "9.5",
+                categoryId = "demo_nature"
+            ),
+            SeriesItem(
+                num = 3,
+                name = "Sintel: Dragon Chronicle",
+                seriesId = 2003,
+                cover = "https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0?w=400",
+                plot = "A fierce wanderer traverses snowbound peaks and desert wastelands to reunite with her companion dragon.",
+                genre = "Fantasy, Adventure",
+                releaseDate = "2024",
+                rating = "9.2",
+                categoryId = "demo_fantasy"
+            )
+        )
+        return if (categoryId.isNullOrBlank() || categoryId == "all") {
+            all
+        } else {
+            all.filter { it.categoryId == categoryId }
+        }
+    }
+
+    fun getDemoSeriesDetail(series: SeriesItem): SeriesDetail {
+        val seasons = listOf(
+            SeriesSeason(
+                id = 1,
+                seasonNumber = 1,
+                name = "Season 1",
+                episodeCount = 3,
+                overview = "The introductory season exploring the origins and first critical missions."
+            ),
+            SeriesSeason(
+                id = 2,
+                seasonNumber = 2,
+                name = "Season 2",
+                episodeCount = 2,
+                overview = "The high-stakes continuation with unexpected allies and greater perils."
+            )
+        )
+
+        val s1Episodes = listOf(
+            SeriesEpisode(
+                id = "${series.seriesIdInt}_101",
+                episodeNum = 1,
+                title = "Episode 1: The Genesis",
+                containerExtension = "mp4",
+                plot = "The journey begins as unexpected anomalies surface across the grid.",
+                duration = "45m",
+                rating = "9.0",
+                season = 1,
+                seriesName = series.name
+            ),
+            SeriesEpisode(
+                id = "${series.seriesIdInt}_102",
+                episodeNum = 2,
+                title = "Episode 2: Echoes in the Void",
+                containerExtension = "mp4",
+                plot = "Pushing deeper into uncharted territory, revelations alter their trajectory.",
+                duration = "48m",
+                rating = "8.8",
+                season = 1,
+                seriesName = series.name
+            ),
+            SeriesEpisode(
+                id = "${series.seriesIdInt}_103",
+                episodeNum = 3,
+                title = "Episode 3: Turning the Tide",
+                containerExtension = "mp4",
+                plot = "A high-intensity confrontation that changes the fate of the team.",
+                duration = "52m",
+                rating = "9.4",
+                season = 1,
+                seriesName = series.name
+            )
+        )
+
+        val s2Episodes = listOf(
+            SeriesEpisode(
+                id = "${series.seriesIdInt}_201",
+                episodeNum = 1,
+                title = "Episode 1: New Horizons",
+                containerExtension = "mp4",
+                plot = "Rebuilding from the aftermath and setting out toward new objectives.",
+                duration = "50m",
+                rating = "9.1",
+                season = 2,
+                seriesName = series.name
+            ),
+            SeriesEpisode(
+                id = "${series.seriesIdInt}_202",
+                episodeNum = 2,
+                title = "Episode 2: The Final Gateway",
+                containerExtension = "mp4",
+                plot = "The ultimate test where all skills and courage are pushed to the limit.",
+                duration = "55m",
+                rating = "9.6",
+                season = 2,
+                seriesName = series.name
+            )
+        )
+
+        return SeriesDetail(
+            info = series,
+            seasons = seasons,
+            episodesBySeason = mapOf(1 to s1Episodes, 2 to s2Episodes)
+        )
     }
 
     fun getDemoStreamPlaybackUrl(streamId: Int): String {

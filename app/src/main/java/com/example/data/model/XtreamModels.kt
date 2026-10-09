@@ -107,6 +107,79 @@ data class VodStream(
 }
 
 /**
+ * Series Category from Xtream Codes:
+ * action=get_series_categories
+ */
+@JsonClass(generateAdapter = true)
+data class SeriesCategory(
+    @Json(name = "category_id") val categoryId: String = "",
+    @Json(name = "category_name") val categoryName: String = "",
+    @Json(name = "parent_id") val parentId: Any? = null
+)
+
+/**
+ * Series Item from Xtream Codes:
+ * action=get_series
+ */
+@JsonClass(generateAdapter = true)
+data class SeriesItem(
+    @Json(name = "num") val num: Any? = null,
+    @Json(name = "name") val name: String = "",
+    @Json(name = "series_id") val seriesId: Any = 0,
+    @Json(name = "cover") val cover: String? = null,
+    @Json(name = "plot") val plot: String? = null,
+    @Json(name = "cast") val cast: String? = null,
+    @Json(name = "director") val director: String? = null,
+    @Json(name = "genre") val genre: String? = null,
+    @Json(name = "releaseDate") val releaseDate: String? = null,
+    @Json(name = "rating") val rating: Any? = null,
+    @Json(name = "category_id") val categoryId: String? = null
+) {
+    val seriesIdInt: Int
+        get() = when (seriesId) {
+            is Number -> seriesId.toInt()
+            is String -> seriesId.toIntOrNull() ?: 0
+            else -> 0
+        }
+}
+
+/**
+ * Series Season details
+ */
+data class SeriesSeason(
+    val id: Int = 1,
+    val seasonNumber: Int = 1,
+    val name: String = "Season 1",
+    val episodeCount: Int = 0,
+    val overview: String? = null,
+    val cover: String? = null
+)
+
+/**
+ * Series Episode details from action=get_series_info
+ */
+data class SeriesEpisode(
+    val id: String = "",
+    val episodeNum: Int = 1,
+    val title: String = "",
+    val containerExtension: String = "mp4",
+    val plot: String? = null,
+    val duration: String? = null,
+    val rating: String? = null,
+    val season: Int = 1,
+    val seriesName: String = ""
+)
+
+/**
+ * Full Series Info and Episode breakdown
+ */
+data class SeriesDetail(
+    val info: SeriesItem,
+    val seasons: List<SeriesSeason>,
+    val episodesBySeason: Map<Int, List<SeriesEpisode>>
+)
+
+/**
  * Internal Configuration Model for MaZze
  */
 data class InternalConfig(
@@ -137,5 +210,10 @@ data class InternalConfig(
     fun buildVodStreamUrl(streamId: Int, extension: String = "mp4"): String {
         val ext = if (extension.isNotBlank()) extension else "mp4"
         return "$formattedBaseUrl/movie/$username/$password/$streamId.$ext"
+    }
+
+    fun buildSeriesStreamUrl(episodeId: String, extension: String = "mp4"): String {
+        val ext = if (extension.isNotBlank()) extension else "mp4"
+        return "$formattedBaseUrl/series/$username/$password/$episodeId.$ext"
     }
 }

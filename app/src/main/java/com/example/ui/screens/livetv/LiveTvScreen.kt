@@ -1,5 +1,6 @@
 package com.example.ui.screens.livetv
 
+import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -15,9 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
@@ -29,8 +29,6 @@ import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -38,20 +36,25 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.local.FavoriteChannelEntity
 import com.example.data.model.LiveCategory
 import com.example.data.model.LiveStream
-import com.example.ui.theme.MaZzeAccentAmber
+import com.example.ui.components.CategoryItemData
+import com.example.ui.components.CategorySidePanel
+import com.example.ui.components.tvFocusable
 import com.example.ui.theme.MaZzeDarkBackground
 import com.example.ui.theme.MaZzePrimary
 import com.example.ui.theme.MaZzeSecondary
@@ -78,129 +81,136 @@ fun LiveTvScreen(
 ) {
     val favoriteIds = favorites.map { it.streamId }.toSet()
 
-    Column(
+    // Transform categories into side-panel items with counts
+    val sideCategories = remember(categories, streams) {
+        val totalCount = streams.size
+        categories.map { cat ->
+            val count = if (cat.categoryId == "all") {
+                totalCount
+            } else {
+                streams.count { it.categoryId == cat.categoryId }.takeIf { it > 0 }
+            }
+            CategoryItemData(
+                id = cat.categoryId,
+                name = cat.categoryName,
+                count = count
+            )
+        }
+    }
+
+    Row(
         modifier = modifier
             .fillMaxSize()
             .background(MaZzeDarkBackground)
     ) {
-        // Search bar
-        Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = onSearchQueryChange,
-                placeholder = { Text("Search channels...", color = TextMuted) },
-                leadingIcon = {
-                    Icon(Icons.Default.Search, contentDescription = null, tint = MaZzeSecondary)
-                },
-                trailingIcon = {
-                    if (searchQuery.isNotBlank()) {
-                        IconButton(onClick = { onSearchQueryChange("") }) {
-                            Icon(Icons.Default.Clear, contentDescription = "Clear search", tint = TextMuted)
+        // 1. Left-hand vertical Category side panel (persistent list with counts, NO chips across top)
+        CategorySidePanel(
+            categories = sideCategories,
+            selectedCategoryId = selectedCategoryId,
+            onSelectCategory = onSelectCategory,
+            title = "Channels"
+        )
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        // 2. Right-hand area: Search bar & Channels List fitting within screen width
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .padding(end = 4.dp)
+        ) {
+            // Search Bar
+            Box(modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp)) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = onSearchQueryChange,
+                    placeholder = { Text("Search channels...", color = TextMuted, fontSize = 13.sp) },
+                    leadingIcon = {
+                        Icon(Icons.Default.Search, contentDescription = null, tint = MaZzeSecondary, modifier = Modifier.size(18.dp))
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotBlank()) {
+                            IconButton(onClick = { onSearchQueryChange("") }) {
+                                Icon(Icons.Default.Clear, contentDescription = "Clear", tint = TextMuted, modifier = Modifier.size(16.dp))
+                            }
                         }
-                    }
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaZzePrimary,
-                    unfocusedBorderColor = MaZzeSurfaceBorder,
-                    focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary,
-                    focusedContainerColor = MaZzeSurfaceElevated,
-                    unfocusedContainerColor = MaZzeSurfaceElevated
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("search_channels_input")
-            )
-        }
-
-        // Categories chip carousel
-        if (categories.isNotEmpty()) {
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(bottom = 8.dp)
-            ) {
-                items(categories) { category ->
-                    val isSelected = category.categoryId == selectedCategoryId
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = { onSelectCategory(category.categoryId) },
-                        label = {
-                            Text(
-                                text = category.categoryName,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                            )
-                        },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaZzePrimary,
-                            selectedLabelColor = Color.White,
-                            containerColor = MaZzeSurfaceDark,
-                            labelColor = TextSecondary
-                        ),
-                        modifier = Modifier.testTag("category_chip_${category.categoryId}")
-                    )
-                }
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(10.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaZzePrimary,
+                        unfocusedBorderColor = MaZzeSurfaceBorder,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary,
+                        focusedContainerColor = MaZzeSurfaceElevated,
+                        unfocusedContainerColor = MaZzeSurfaceElevated
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .tvFocusable(shape = RoundedCornerShape(10.dp))
+                        .testTag("search_channels_input")
+                )
             }
-        }
 
-        // Channels list
-        if (isLoading) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(color = MaZzeSecondary)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text("Loading live channels...", color = TextSecondary)
-                }
-            }
-        } else if (streams.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(32.dp)
+            // Channels list / state
+            if (isLoading) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Tv,
-                        contentDescription = null,
-                        tint = TextMuted,
-                        modifier = Modifier.size(54.dp)
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = "No channels found",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = TextPrimary,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = if (searchQuery.isNotBlank()) "No channels match '$searchQuery'" else "Check category or update credentials in Settings.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextMuted,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(color = MaZzeSecondary, modifier = Modifier.size(36.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text("Loading channels...", color = TextSecondary, fontSize = 12.sp)
+                    }
                 }
-            }
-        } else {
-            LazyColumn(
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(streams, key = { it.streamIdInt }) { stream ->
-                    val isFav = favoriteIds.contains(stream.streamIdInt)
-                    ChannelListItem(
-                        stream = stream,
-                        isFavorite = isFav,
-                        onPlay = { onPlayChannel(stream) },
-                        onToggleFavorite = { onToggleFavorite(stream, isFav) }
-                    )
+            } else if (streams.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(20.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Tv,
+                            contentDescription = null,
+                            tint = TextMuted,
+                            modifier = Modifier.size(44.dp)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "No channels found",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = TextPrimary,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = if (searchQuery.isNotBlank()) "No results for '$searchQuery'" else "Select another category.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted
+                        )
+                    }
+                }
+            } else {
+                // Channel rows: fit cleanly within the right area width with Heart and Play buttons fully visible
+                LazyColumn(
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(streams, key = { it.streamIdInt }) { stream ->
+                        val isFav = favoriteIds.contains(stream.streamIdInt)
+                        ChannelRowItem(
+                            stream = stream,
+                            isFavorite = isFav,
+                            onPlay = { onPlayChannel(stream) },
+                            onToggleFavorite = { onToggleFavorite(stream, isFav) }
+                        )
+                    }
                 }
             }
         }
@@ -208,7 +218,7 @@ fun LiveTvScreen(
 }
 
 @Composable
-fun ChannelListItem(
+fun ChannelRowItem(
     stream: LiveStream,
     isFavorite: Boolean,
     onPlay: () -> Unit,
@@ -217,20 +227,23 @@ fun ChannelListItem(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(10.dp))
+            .tvFocusable(shape = RoundedCornerShape(10.dp))
             .clickable { onPlay() }
             .testTag("channel_item_${stream.streamIdInt}"),
         colors = CardDefaults.cardColors(containerColor = MaZzeSurfaceDark),
-        shape = RoundedCornerShape(12.dp)
+        shape = RoundedCornerShape(10.dp)
     ) {
         Row(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 10.dp, top = 8.dp, bottom = 8.dp, end = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Channel Logo / Icon
             Box(
                 modifier = Modifier
-                    .size(50.dp)
+                    .size(42.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(MaZzeSurfaceElevated),
                 contentAlignment = Alignment.Center
@@ -241,80 +254,103 @@ fun ChannelListItem(
                         contentDescription = stream.name,
                         contentScale = ContentScale.Fit,
                         modifier = Modifier
-                            .size(46.dp)
-                            .padding(4.dp)
+                            .size(36.dp)
+                            .padding(2.dp)
                     )
                 } else {
                     Icon(
                         imageVector = Icons.Default.Tv,
                         contentDescription = null,
                         tint = MaZzeSecondary,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.width(14.dp))
+            Spacer(modifier = Modifier.width(10.dp))
 
-            // Channel Name & Info
+            // Channel Name & Info (weight ensures it never overflows or pushes the buttons off)
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = stream.name,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary,
-                    maxLines = 1
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(MaZzePrimary.copy(alpha = 0.2f))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(MaZzePrimary.copy(alpha = 0.25f))
+                            .padding(horizontal = 4.dp, vertical = 1.dp)
                     ) {
                         Text(
                             text = "LIVE",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaZzeSecondary,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 10.sp
+                            fontSize = 9.sp
                         )
                     }
                     if (stream.num != null) {
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "CH ${stream.num}",
                             style = MaterialTheme.typography.labelSmall,
-                            color = TextMuted
+                            color = TextMuted,
+                            fontSize = 10.sp
                         )
                     }
                 }
             }
 
-            // Favorite star button
-            IconButton(
-                onClick = onToggleFavorite,
-                modifier = Modifier.testTag("favorite_button_${stream.streamIdInt}")
-            ) {
-                Icon(
-                    imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                    contentDescription = "Toggle favorite",
-                    tint = if (isFavorite) MaZzeAccentAmber else TextMuted
-                )
-            }
+            Spacer(modifier = Modifier.width(6.dp))
 
-            // Play button
-            IconButton(
-                onClick = onPlay,
-                modifier = Modifier.testTag("play_button_${stream.streamIdInt}")
+            // Action Buttons Container - guaranteed fully visible at the right end of the row
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.PlayCircle,
-                    contentDescription = "Play channel",
-                    tint = MaZzeSecondary,
-                    modifier = Modifier.size(28.dp)
-                )
+                // Favorite Heart button
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(if (isFavorite) Color(0x33FF2A6D) else MaZzeSurfaceElevated)
+                        .tvFocusable(shape = RoundedCornerShape(18.dp), borderWidth = 2.dp)
+                        .clickable { onToggleFavorite() }
+                        .testTag("favorite_button_${stream.streamIdInt}"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = "Toggle favorite",
+                        tint = if (isFavorite) Color(0xFFFF2A6D) else Color.White.copy(alpha = 0.7f),
+                        modifier = Modifier.size(19.dp)
+                    )
+                }
+
+                // Play button
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(MaZzeSecondary.copy(alpha = 0.18f))
+                        .tvFocusable(shape = RoundedCornerShape(18.dp), borderWidth = 2.dp)
+                        .clickable { onPlay() }
+                        .testTag("play_button_${stream.streamIdInt}"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayCircle,
+                        contentDescription = "Play channel",
+                        tint = MaZzeSecondary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
             }
         }
     }

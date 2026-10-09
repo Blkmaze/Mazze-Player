@@ -10,6 +10,10 @@ import com.example.data.local.XtreamProfileEntity
 import com.example.data.model.InternalConfig
 import com.example.data.model.LiveCategory
 import com.example.data.model.LiveStream
+import com.example.data.model.SeriesCategory
+import com.example.data.model.SeriesDetail
+import com.example.data.model.SeriesEpisode
+import com.example.data.model.SeriesItem
 import com.example.data.model.VodCategory
 import com.example.data.model.VodStream
 import com.example.data.model.XtreamAuthResponse
@@ -23,9 +27,12 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 sealed class Screen {
+    data object Splash : Screen()
     data object Home : Screen()
     data object LiveTv : Screen()
     data object Vod : Screen()
+    data object Series : Screen()
+    data class SeriesDetailScreen(val series: SeriesItem) : Screen()
     data object Favorites : Screen()
     data object InternalSettings : Screen()
     data class Player(
@@ -59,12 +66,13 @@ class MaZzeViewModel(application: Application) : AndroidViewModel(application) {
     val recents: StateFlow<List<RecentStreamEntity>> = repository.recents
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private val _currentScreen = MutableStateFlow<Screen>(Screen.Home)
+    private val _currentScreen = MutableStateFlow<Screen>(Screen.Splash)
     val currentScreen: StateFlow<Screen> = _currentScreen.asStateFlow()
 
     private val _authUiState = MutableStateFlow<AuthUiState>(AuthUiState.Idle)
     val authUiState: StateFlow<AuthUiState> = _authUiState.asStateFlow()
 
+    // --- Live Streams ---
     private val _liveCategories = MutableStateFlow<List<LiveCategory>>(emptyList())
     val liveCategories: StateFlow<List<LiveCategory>> = _liveCategories.asStateFlow()
 
@@ -80,7 +88,6 @@ class MaZzeViewModel(application: Application) : AndroidViewModel(application) {
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    // Filtered Live Streams
     val filteredLiveStreams: StateFlow<List<LiveStream>> = combine(
         _liveStreams,
         _searchQuery
@@ -92,7 +99,7 @@ class MaZzeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // VOD
+    // --- VOD (Movies) ---
     private val _vodCategories = MutableStateFlow<List<VodCategory>>(emptyList())
     val vodCategories: StateFlow<List<VodCategory>> = _vodCategories.asStateFlow()
 
@@ -102,7 +109,55 @@ class MaZzeViewModel(application: Application) : AndroidViewModel(application) {
     private val _selectedVodCategoryId = MutableStateFlow("all")
     val selectedVodCategoryId: StateFlow<String> = _selectedVodCategoryId.asStateFlow()
 
-    // Diagnostics & Testing
+    private val _searchQueryVod = MutableStateFlow("")
+    val searchQueryVod: StateFlow<String> = _searchQueryVod.asStateFlow()
+
+    val filteredVodStreams: StateFlow<List<VodStream>> = combine(
+        _vodStreams,
+        _searchQueryVod
+    ) { movies, query ->
+        if (query.isBlank()) {
+            movies
+        } else {
+            movies.filter { it.name.contains(query, ignoreCase = true) }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // --- Series ---
+    private val _seriesCategories = MutableStateFlow<List<SeriesCategory>>(emptyList())
+    val seriesCategories: StateFlow<List<SeriesCategory>> = _seriesCategories.asStateFlow()
+
+    private val _seriesList = MutableStateFlow<List<SeriesItem>>(emptyList())
+    val seriesList: StateFlow<List<SeriesItem>> = _seriesList.asStateFlow()
+
+    private val _selectedSeriesCategoryId = MutableStateFlow("all")
+    val selectedSeriesCategoryId: StateFlow<String> = _selectedSeriesCategoryId.asStateFlow()
+
+    private val _isLoadingSeries = MutableStateFlow(false)
+    val isLoadingSeries: StateFlow<Boolean> = _isLoadingSeries.asStateFlow()
+
+    private val _searchQuerySeries = MutableStateFlow("")
+    val searchQuerySeries: StateFlow<String> = _searchQuerySeries.asStateFlow()
+
+    val filteredSeriesList: StateFlow<List<SeriesItem>> = combine(
+        _seriesList,
+        _searchQuerySeries
+    ) { series, query ->
+        if (query.isBlank()) {
+            series
+        } else {
+            series.filter { it.name.contains(query, ignoreCase = true) }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Series Detail
+    private val _selectedSeriesDetail = MutableStateFlow<SeriesDetail?>(null)
+    val selectedSeriesDetail: StateFlow<SeriesDetail?> = _selectedSeriesDetail.asStateFlow()
+
+    private val _isLoadingSeriesDetail = MutableStateFlow(false)
+    val isLoadingSeriesDetail: StateFlow<Boolean> = _isLoadingSeriesDetail.asStateFlow()
+
+    // --- Diagnostics & Testing ---
     private val _isTestingConnection = MutableStateFlow(false)
     val isTestingConnection: StateFlow<Boolean> = _isTestingConnection.asStateFlow()
 
@@ -113,13 +168,11 @@ class MaZzeViewModel(application: Application) : AndroidViewModel(application) {
     val statusNotice: StateFlow<String?> = _statusNotice.asStateFlow()
 
     init {
-        // Observe active profile and auto-connect
         viewModelScope.launch {
             repository.activeProfileFlow.collect { profile ->
                 if (profile != null) {
                     connectWithProfile(profile)
                 } else {
-                    // Check if profiles exist. If none, we can show demo content initially
                     loadDemoContent()
                 }
             }
@@ -132,6 +185,14 @@ class MaZzeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setSearchQuery(query: String) {
         _searchQuery.value = query
+    }
+
+    fun setSearchQueryVod(query: String) {
+        _searchQueryVod.value = query
+    }
+
+    fun setSearchQuerySeries(query: String) {
+        _searchQuerySeries.value = query
     }
 
     fun clearStatusNotice() {
@@ -160,6 +221,7 @@ class MaZzeViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _authUiState.value = AuthUiState.Connecting
             _isLoadingStreams.value = true
+            _isLoadingSeries.value = true
 
             val authResult = repository.authenticate(config)
             authResult.fold(
@@ -178,13 +240,16 @@ class MaZzeViewModel(application: Application) : AndroidViewModel(application) {
                     _liveStreams.value = streamsResult.getOrDefault(emptyList())
                     _isLoadingStreams.value = false
 
-                    // Fetch VOD Categories asynchronously
+                    // Fetch VOD
                     loadVod(config)
+
+                    // Fetch Series
+                    loadSeries(config)
                 },
                 onFailure = { error ->
                     _authUiState.value = AuthUiState.Error(error.localizedMessage ?: "Failed to connect to Xtream server")
                     _isLoadingStreams.value = false
-                    // Fall back to demo so app remains fully previewable
+                    _isLoadingSeries.value = false
                     loadDemoContent()
                 }
             )
@@ -240,15 +305,105 @@ class MaZzeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun loadSeries(config: InternalConfig) {
+        viewModelScope.launch {
+            _isLoadingSeries.value = true
+            val sCats = repository.getSeriesCategories(config).getOrDefault(emptyList()).toMutableList()
+            sCats.add(0, SeriesCategory(categoryId = "all", categoryName = "All Series"))
+            _seriesCategories.value = sCats
+
+            val sList = repository.getSeriesList(config, null)
+            _seriesList.value = sList.getOrDefault(emptyList())
+            _isLoadingSeries.value = false
+        }
+    }
+
+    fun selectSeriesCategory(categoryId: String) {
+        _selectedSeriesCategoryId.value = categoryId
+        val active = activeProfile.value
+        if (active != null && _authUiState.value is AuthUiState.Success) {
+            val config = InternalConfig(
+                serverUrl = active.serverUrl,
+                username = active.username,
+                password = active.password,
+                streamFormat = active.streamFormat
+            )
+            viewModelScope.launch {
+                _isLoadingSeries.value = true
+                val list = repository.getSeriesList(config, if (categoryId == "all") null else categoryId)
+                _seriesList.value = list.getOrDefault(emptyList())
+                _isLoadingSeries.value = false
+            }
+        } else {
+            _seriesList.value = repository.getDemoSeriesList(categoryId)
+        }
+    }
+
+    fun openSeriesDetail(series: SeriesItem) {
+        _currentScreen.value = Screen.SeriesDetailScreen(series)
+        _isLoadingSeriesDetail.value = true
+        _selectedSeriesDetail.value = null
+
+        val active = activeProfile.value
+        if (active != null && _authUiState.value is AuthUiState.Success) {
+            val config = InternalConfig(
+                serverUrl = active.serverUrl,
+                username = active.username,
+                password = active.password,
+                streamFormat = active.streamFormat
+            )
+            viewModelScope.launch {
+                val detailResult = repository.getSeriesInfo(config, series)
+                _selectedSeriesDetail.value = detailResult.getOrNull() ?: repository.getDemoSeriesDetail(series)
+                _isLoadingSeriesDetail.value = false
+            }
+        } else {
+            _selectedSeriesDetail.value = repository.getDemoSeriesDetail(series)
+            _isLoadingSeriesDetail.value = false
+        }
+    }
+
+    fun playSeriesEpisode(episode: SeriesEpisode, seriesItem: SeriesItem) {
+        viewModelScope.launch {
+            val active = activeProfile.value
+            val isDemo = active == null || _authUiState.value !is AuthUiState.Success
+            val url = if (isDemo) {
+                // Return playable demo video
+                repository.getDemoStreamPlaybackUrl(1001 + (episode.episodeNum % 5))
+            } else {
+                val config = InternalConfig(
+                    serverUrl = active.serverUrl,
+                    username = active.username,
+                    password = active.password
+                )
+                config.buildSeriesStreamUrl(episode.id, episode.containerExtension)
+            }
+
+            val streamId = episode.id.hashCode()
+            repository.recordPlayed(streamId, "${seriesItem.name} - ${episode.title}", seriesItem.cover, "series")
+
+            _currentScreen.value = Screen.Player(
+                stream = LiveStream(
+                    streamId = streamId,
+                    name = "${seriesItem.name} - S${episode.season}E${episode.episodeNum}: ${episode.title}",
+                    streamIcon = seriesItem.cover,
+                    streamType = "series"
+                ),
+                playbackUrl = url,
+                streamType = "series"
+            )
+        }
+    }
+
     private fun loadDemoContent() {
         _liveCategories.value = repository.getDemoCategories()
         _liveStreams.value = repository.getDemoStreams()
+        _seriesCategories.value = repository.getDemoSeriesCategories()
+        _seriesList.value = repository.getDemoSeriesList()
         _isLoadingStreams.value = false
+        _isLoadingSeries.value = false
     }
 
-    /**
-     * Saves user-entered Xtream Codes configuration settings
-     */
     fun saveInternalConfiguration(
         id: Long = 0,
         profileName: String,

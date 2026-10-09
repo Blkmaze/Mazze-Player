@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <!-- Dark TV background -->
+    <path
+        android:fillColor="#0A0C12"
+        android:pathData="M0,0h320v180h-320z" />
+    <!-- Gradient geometric accents -->
+    <path
+        android:fillColor="#1B143A"
+        android:pathData="M0,0 L320,180 L0,180 Z" />
+    <path
+        android:fillColor="#7C4DFF"
+        android:fillAlpha="0.25"
+        android:pathData="M160,90m-60,0a60,60 0 1,1 120,0a60,60 0 1,1 -120,0" />
+    <!-- TV frame -->
+    <path
+        android:fillColor="#7C4DFF"
+        android:pathData="M110,45 h100 c5.5,0 10,4.5 10,10 v60 c0,5.5 -4.5,10 -10,10 h-100 c-5.5,0 -10,-4.5 -10,-10 v-60 c0,-5.5 4.5,-10 10,-10 z" />
+    <!-- Inner TV screen -->
+    <path
+        android:fillColor="#0F111E"
+        android:pathData="M115,50 h90 c3,0 5,2 5,5 v50 c0,3 -2,5 -5,5 h-90 c-3,0 -5,-2 -5,-5 v-50 c0,-3 2,-5 5,-5 z" />
+    <!-- TV Stand -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M150,127 h20 v6 h-20 z M142,133 h36 v5 h-36 z" />
+    <!-- Letter M inside screen -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M130,62 h7 l8,14 l8,-14 h7 v28 h-6 v-16 l-9,14 h-2 l-9,-14 v16 h-6 z" />
+    <!-- Play arrow -->
+    <path
+        android:fillColor="#FFB300"
+        android:pathData="M174,72 l13,8 l-13,8 z" />
+</vector>
