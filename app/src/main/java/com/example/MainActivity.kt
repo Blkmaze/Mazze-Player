@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.components.BottomNavBar
 import com.example.ui.components.MaZzeTopBar
+import com.example.ui.components.UpdateDialog
 import com.example.ui.screens.favorites.FavoritesScreen
 import com.example.ui.screens.home.HomeScreen
 import com.example.ui.screens.livetv.LiveTvScreen
@@ -110,6 +111,12 @@ fun MaZzeApp(viewModel: MaZzeViewModel) {
     val testResult by viewModel.testConnectionResult.collectAsStateWithLifecycle()
     val statusNotice by viewModel.statusNotice.collectAsStateWithLifecycle()
 
+    // Update Checker State
+    val availableUpdate by viewModel.availableUpdate.collectAsStateWithLifecycle()
+    val downloadState by viewModel.downloadState.collectAsStateWithLifecycle()
+    val isCheckingUpdate by viewModel.isCheckingUpdate.collectAsStateWithLifecycle()
+    val manualUpdateCheckResult by viewModel.manualUpdateCheckResult.collectAsStateWithLifecycle()
+
     // Back button handling
     when (currentScreen) {
         is Screen.Splash -> {
@@ -151,6 +158,7 @@ fun MaZzeApp(viewModel: MaZzeViewModel) {
                     tvSafeVert = tvSafeVert,
                     onSplashComplete = {
                         viewModel.navigateTo(Screen.Home)
+                        viewModel.checkUpdateOnAppStart()
                     }
                 )
             }
@@ -289,6 +297,9 @@ fun MaZzeApp(viewModel: MaZzeViewModel) {
                                     isTesting = isTesting,
                                     testResult = testResult,
                                     statusNotice = statusNotice,
+                                    isCheckingUpdate = isCheckingUpdate,
+                                    updateCheckResult = manualUpdateCheckResult,
+                                    onCheckForUpdates = { viewModel.checkForUpdates(isManual = true) },
                                     onSaveProfile = { id, name, url, user, pass, format ->
                                         viewModel.saveInternalConfiguration(
                                             id = id,
@@ -318,5 +329,17 @@ fun MaZzeApp(viewModel: MaZzeViewModel) {
                 }
             }
         }
+    }
+
+    // Global TV-friendly update dialog
+    val currentUpdate = availableUpdate
+    if (currentUpdate != null) {
+        UpdateDialog(
+            updateInfo = currentUpdate,
+            downloadState = downloadState,
+            onUpdateClick = { viewModel.startDownloadingUpdate(context) },
+            onLaterClick = { viewModel.dismissUpdateDialog() },
+            onRetryInstall = { viewModel.retryInstall(context) }
+        )
     }
 }

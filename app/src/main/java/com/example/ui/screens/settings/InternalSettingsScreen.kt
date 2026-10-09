@@ -29,10 +29,13 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Sensors
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import com.example.BuildConfig
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -93,6 +96,9 @@ fun InternalSettingsScreen(
     onSwitchProfile: (profileId: Long) -> Unit,
     onDeleteProfile: (XtreamProfileEntity) -> Unit,
     onClearStatusNotice: () -> Unit,
+    isCheckingUpdate: Boolean = false,
+    updateCheckResult: String? = null,
+    onCheckForUpdates: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     // Form fields state
@@ -490,7 +496,119 @@ fun InternalSettingsScreen(
             }
         }
 
-        // Section 5: Xtream Codes Info & Architecture Guide
+        // Section 5: App Version & Updates
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaZzeSurfaceDark),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, MaZzeSurfaceBorder, RoundedCornerShape(16.dp))
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SystemUpdate,
+                            contentDescription = null,
+                            tint = MaZzePrimary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "App Version & Updates",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+                    }
+
+                    // Installed Version display according to requirement 4:
+                    // "Show the installed version in Settings as 'Version 1.0.<versionCode> (build <versionCode>)'."
+                    Surface(
+                        color = MaZzeSurfaceElevated,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Installed Version",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextSecondary
+                            )
+                            Text(
+                                text = "Version 1.0.${BuildConfig.VERSION_CODE} (build ${BuildConfig.VERSION_CODE})",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                        }
+                    }
+
+                    // Optional status notice after check
+                    if (updateCheckResult != null) {
+                        val isErr = updateCheckResult.contains("error", ignoreCase = true) ||
+                                updateCheckResult.contains("could not", ignoreCase = true)
+                        Surface(
+                            color = if (isErr) MaZzeError.copy(alpha = 0.15f) else MaZzePrimary.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = updateCheckResult,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (isErr) MaZzeError else MaZzePrimary,
+                                modifier = Modifier.padding(12.dp)
+                            )
+                        }
+                    }
+
+                    // Check for updates button
+                    Button(
+                        onClick = onCheckForUpdates,
+                        enabled = !isCheckingUpdate,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .tvFocusable(shape = RoundedCornerShape(10.dp))
+                            .testTag("check_for_updates_button"),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaZzePrimary,
+                            contentColor = Color.White
+                        )
+                    ) {
+                        if (isCheckingUpdate) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = "Checking for updates...", fontWeight = FontWeight.Bold)
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = "Check for updates", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Section 6: Xtream Codes Info & Architecture Guide
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaZzeSurfaceDark),

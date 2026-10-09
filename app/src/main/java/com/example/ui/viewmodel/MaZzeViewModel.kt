@@ -3,6 +3,7 @@ package com.example.ui.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.BuildConfig
 import com.example.data.local.FavoriteChannelEntity
 import com.example.data.local.MaZzeDatabase
 import com.example.data.local.RecentStreamEntity
@@ -18,6 +19,10 @@ import com.example.data.model.VodCategory
 import com.example.data.model.VodStream
 import com.example.data.model.XtreamAuthResponse
 import com.example.data.repository.XtreamRepository
+import com.example.data.update.DownloadState
+import com.example.data.update.UpdateInfo
+import com.example.data.update.UpdateManager
+import android.content.Context
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -167,6 +172,21 @@ class MaZzeViewModel(application: Application) : AndroidViewModel(application) {
     private val _statusNotice = MutableStateFlow<String?>(null)
     val statusNotice: StateFlow<String?> = _statusNotice.asStateFlow()
 
+    // --- Update Checker State ---
+    private val _availableUpdate = MutableStateFlow<UpdateInfo?>(null)
+    val availableUpdate: StateFlow<UpdateInfo?> = _availableUpdate.asStateFlow()
+
+    private val _downloadState = MutableStateFlow<DownloadState>(DownloadState.Idle)
+    val downloadState: StateFlow<DownloadState> = _downloadState.asStateFlow()
+
+    private val _isCheckingUpdate = MutableStateFlow(false)
+    val isCheckingUpdate: StateFlow<Boolean> = _isCheckingUpdate.asStateFlow()
+
+    private val _manualUpdateCheckResult = MutableStateFlow<String?>(null)
+    val manualUpdateCheckResult: StateFlow<String?> = _manualUpdateCheckResult.asStateFlow()
+
+    private var hasAutoCheckedUpdate = false
+
     init {
         viewModelScope.launch {
             repository.activeProfileFlow.collect { profile ->
@@ -201,6 +221,92 @@ class MaZzeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearTestResult() {
         _testConnectionResult.value = null
+    }
+
+    /**
+     * Checks for updates silently on app launch after splash screen.
+     * Guaranteed to run at most once per application launch.
+     */
+    fun checkUpdateOnAppStart() {
+        if (hasAutoCheckedUpdate) return
+        hasAutoCheckedUpdate = true
+        checkForUpdates(isManual = false)
+    }
+
+    /**
+     * Checks for updates from GitHub releases endpoint.
+     * When isManual = true (from Settings), provides UI status feedback.
+     * When isManual = false (on app launch), fails silently without showing errors.
+     */
+    fun checkForUpdates(isManual: Boolean = false) {
+        if (_isCheckingUpdate.value) return
+        viewModelScope.launch {
+            _isCheckingUpdate.value = true
+            if (isManual) {
+                _manualUpdateCheckResult.value = "Checking for updates..."
+            }
+            val result = UpdateManager.checkForUpdate(currentBuild = BuildConfig.VERSION_CODE)
+            _isCheckingUpdate.value = false
+            result.fold(
+                onSuccess = { updateInfo ->
+                    if (updateInfo != null) {
+                        _availableUpdate.value = updateInfo
+                        if (isManual) {
+                            _manualUpdateCheckResult.value = "Update available: build ${updateInfo.latestBuildNumber}"
+                        }
+                    } else {
+                        if (isManual) {
+                            _manualUpdateCheckResult.value = "You are on the latest version (build ${BuildConfig.VERSION_CODE})"
+                        }
+                    }
+                },
+                onFailure = { error ->
+                    if (isManual) {
+                        _manualUpdateCheckResult.value = "Could not check for updates: ${error.localizedMessage ?: "Connection error"}"
+                    }
+                    // Silent failure on app start (isManual = false)
+                }
+            )
+        }
+    }
+
+    fun dismissUpdateDialog() {
+        _availableUpdate.value = null
+        _downloadState.value = DownloadState.Idle
+    }
+
+    fun startDownloadingUpdate(context: Context) {
+        val info = _availableUpdate.value ?: return
+        viewModelScope.launch {
+            UpdateManager.downloadAndInstallApk(
+                context = context.applicationContext,
+                updateInfo = info,
+                onStateChanged = { state ->
+                    _downloadState.value = state
+                }
+            )
+        }
+    }
+
+    fun retryInstall(context: Context) {
+        when (val state = _downloadState.value) {
+            is DownloadState.NeedsPermission -> {
+                if (UpdateManager.canRequestPackageInstalls(context)) {
+                    _downloadState.value = DownloadState.ReadyToInstall(state.apkFile, state.apkUri)
+                    UpdateManager.launchPackageInstaller(context, state.apkUri)
+                } else {
+                    UpdateManager.openUnknownAppSourcesSettings(context)
+                }
+            }
+            is DownloadState.ReadyToInstall -> {
+                UpdateManager.launchPackageInstaller(context, state.apkUri)
+            }
+            else -> Unit
+        }
+    }
+
+    fun clearManualUpdateCheckResult() {
+        _manualUpdateCheckResult.value = null
     }
 
     private fun connectWithProfile(profile: XtreamProfileEntity) {
