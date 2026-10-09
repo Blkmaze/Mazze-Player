@@ -1,0 +1,6 @@
+{
+  "name": "MaZze",
+  "description": "MaZze IPTV streaming player with customizable Xtream Codes API internal configuration and live media player.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

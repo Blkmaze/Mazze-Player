@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">MaZze</string>
+    <string name="login_title">Xtream Codes Login</string>
+    <string name="server_url">Server URL</string>
+    <string name="username">Username</string>
+    <string name="password">Password</string>
+    <string name="settings">Internal Settings</string>
+    <string name="connect">Connect to Server</string>
+    <string name="live_tv">Live TV</string>
+    <string name="movies">Movies</string>
+    <string name="series">Series</string>
+    <string name="favorites">Favorites</string>
+</resources>
